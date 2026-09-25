@@ -18,14 +18,17 @@ import type { BetterGIScriptGroupSaveIn } from '../models/BetterGIScriptGroupSav
 import type { BetterGIScriptReadmeOut } from '../models/BetterGIScriptReadmeOut';
 import type { BetterGIScriptSettingsUiOut } from '../models/BetterGIScriptSettingsUiOut';
 import type { BlueArchiveActivityIn } from '../models/BlueArchiveActivityIn';
+import type { BlueArchiveActivityStatusOut } from '../models/BlueArchiveActivityStatusOut';
 import type { Body_batch_update_oknte_configs_api_scripts_oknte_configs_batch_update_post } from '../models/Body_batch_update_oknte_configs_api_scripts_oknte_configs_batch_update_post';
 import type { Body_get_maa_cultivate_operators_api_scripts_maa_cultivate_operators_post } from '../models/Body_get_maa_cultivate_operators_api_scripts_maa_cultivate_operators_post';
+import type { Body_get_maa_depot_inventory_api_scripts_maa_depot_inventory_post } from '../models/Body_get_maa_depot_inventory_api_scripts_maa_depot_inventory_post';
 import type { Body_get_maa_depot_stage_candidates_api_scripts_maa_depot_stage_candidates_post } from '../models/Body_get_maa_depot_stage_candidates_api_scripts_maa_depot_stage_candidates_post';
 import type { ComboBoxOut } from '../models/ComboBoxOut';
 import type { CommunityActivityOut } from '../models/CommunityActivityOut';
 import type { CommunityActivityQueryIn } from '../models/CommunityActivityQueryIn';
 import type { ConfigBackupEnsureIn } from '../models/ConfigBackupEnsureIn';
 import type { ConfigBackupEnsureOut } from '../models/ConfigBackupEnsureOut';
+import type { ConfigBackupFileOut } from '../models/ConfigBackupFileOut';
 import type { ConfigBackupListOut } from '../models/ConfigBackupListOut';
 import type { ConfigBackupPreviewOut } from '../models/ConfigBackupPreviewOut';
 import type { ConfigBackupRestoreIn } from '../models/ConfigBackupRestoreIn';
@@ -52,22 +55,37 @@ import type { HistoryDataGetOut } from '../models/HistoryDataGetOut';
 import type { HistorySearchIn } from '../models/HistorySearchIn';
 import type { HistorySearchOut } from '../models/HistorySearchOut';
 import type { HSRCapabilitiesOut } from '../models/HSRCapabilitiesOut';
-import type { HSRDirectConfigImportIn } from '../models/HSRDirectConfigImportIn';
-import type { HSRDirectConfigImportOut } from '../models/HSRDirectConfigImportOut';
+import type { HSRCloudLoginIn } from '../models/HSRCloudLoginIn';
+import type { HSRCloudLoginOut } from '../models/HSRCloudLoginOut';
 import type { HSRManagedConfigOut } from '../models/HSRManagedConfigOut';
 import type { HSRSRAProfilesOut } from '../models/HSRSRAProfilesOut';
 import type { HSRStageOptionsOut } from '../models/HSRStageOptionsOut';
 import type { HSRUpdateIn } from '../models/HSRUpdateIn';
 import type { HSRUpdateOut } from '../models/HSRUpdateOut';
 import type { InfoOut } from '../models/InfoOut';
+import type { MaaCultivateOperatorsOut } from '../models/MaaCultivateOperatorsOut';
+import type { MaaDepotInventoryOut } from '../models/MaaDepotInventoryOut';
 import type { MaaEndOptionsOut } from '../models/MaaEndOptionsOut';
 import type { MaaFWAgentEnvPrepareIn } from '../models/MaaFWAgentEnvPrepareIn';
 import type { MaaFWAgentEnvPrepareOut } from '../models/MaaFWAgentEnvPrepareOut';
+import type { MaaFWEmbeddedCloneIn } from '../models/MaaFWEmbeddedCloneIn';
+import type { MaaFWEmbeddedIn } from '../models/MaaFWEmbeddedIn';
+import type { MaaFWEmbeddedReimportIn } from '../models/MaaFWEmbeddedReimportIn';
+import type { MaaFWEmbeddedSourcesIn } from '../models/MaaFWEmbeddedSourcesIn';
+import type { MaaFWEmbeddedSourcesOut } from '../models/MaaFWEmbeddedSourcesOut';
+import type { MaaFWEmbeddedStatusOut } from '../models/MaaFWEmbeddedStatusOut';
+import type { MaaFWGamePackageIn } from '../models/MaaFWGamePackageIn';
+import type { MaaFWGamePackageOut } from '../models/MaaFWGamePackageOut';
 import type { MaaFWInterfacePreviewIn } from '../models/MaaFWInterfacePreviewIn';
 import type { MaaFWInterfacePreviewOut } from '../models/MaaFWInterfacePreviewOut';
 import type { MaaFWProjectUpdateIn } from '../models/MaaFWProjectUpdateIn';
 import type { MaaFWProjectUpdateOut } from '../models/MaaFWProjectUpdateOut';
+import type { MaaFWShellInstanceImportIn } from '../models/MaaFWShellInstanceImportIn';
+import type { MaaFWShellInstanceImportOut } from '../models/MaaFWShellInstanceImportOut';
+import type { MaaFWShellInstancesIn } from '../models/MaaFWShellInstancesIn';
+import type { MaaFWShellInstancesOut } from '../models/MaaFWShellInstancesOut';
 import type { NoticeOut } from '../models/NoticeOut';
+import type { NotifyChannelsOut } from '../models/NotifyChannelsOut';
 import type { OutBase } from '../models/OutBase';
 import type { PatternDebugIn } from '../models/PatternDebugIn';
 import type { PatternDebugOut } from '../models/PatternDebugOut';
@@ -129,16 +147,22 @@ import type { ToolsUpdateIn } from '../models/ToolsUpdateIn';
 import type { UpdateCheckIn } from '../models/UpdateCheckIn';
 import type { UpdateCheckOut } from '../models/UpdateCheckOut';
 import type { UpdateDownloadSnapshot } from '../models/UpdateDownloadSnapshot';
+import type { UserConfigDirIn } from '../models/UserConfigDirIn';
+import type { UserConfigDirOut } from '../models/UserConfigDirOut';
 import type { UserCreateOut } from '../models/UserCreateOut';
 import type { UserDeleteIn } from '../models/UserDeleteIn';
 import type { UserGetIn } from '../models/UserGetIn';
 import type { UserGetOut } from '../models/UserGetOut';
 import type { UserInBase } from '../models/UserInBase';
+import type { UserInfrastPlanComboxOut } from '../models/UserInfrastPlanComboxOut';
+import type { UserInfrastPlanSelectIn } from '../models/UserInfrastPlanSelectIn';
+import type { UserInfrastPlanSelectOut } from '../models/UserInfrastPlanSelectOut';
 import type { UserReorderIn } from '../models/UserReorderIn';
 import type { UserSetIn } from '../models/UserSetIn';
 import type { UserUpdateIn } from '../models/UserUpdateIn';
 import type { VersionOut } from '../models/VersionOut';
 import type { VirtualDisplayCheckOut } from '../models/VirtualDisplayCheckOut';
+import type { VirtualDisplayDetachOut } from '../models/VirtualDisplayDetachOut';
 import type { WebhookCreateOut } from '../models/WebhookCreateOut';
 import type { WebhookDeleteIn } from '../models/WebhookDeleteIn';
 import type { WebhookGetIn } from '../models/WebhookGetIn';
@@ -163,6 +187,13 @@ import type { ZzzOdInstancesOut } from '../models/ZzzOdInstancesOut';
 import type { ZzzOdLauncherOut } from '../models/ZzzOdLauncherOut';
 import type { ZzzOdNativeConfigIn } from '../models/ZzzOdNativeConfigIn';
 import type { ZzzOdNativeConfigOut } from '../models/ZzzOdNativeConfigOut';
+import type { ZzzOdRecycleClearIn } from '../models/ZzzOdRecycleClearIn';
+import type { ZzzOdRecycleClearOut } from '../models/ZzzOdRecycleClearOut';
+import type { ZzzOdRecycleOut } from '../models/ZzzOdRecycleOut';
+import type { ZzzOdRecycleRestoreIn } from '../models/ZzzOdRecycleRestoreIn';
+import type { ZzzOdSlotCleanIn } from '../models/ZzzOdSlotCleanIn';
+import type { ZzzOdSlotCleanOut } from '../models/ZzzOdSlotCleanOut';
+import type { ZzzOdSlotsOut } from '../models/ZzzOdSlotsOut';
 import type { ZzzOdTaskOptionsOut } from '../models/ZzzOdTaskOptionsOut';
 import type { ZzzOdTeamsOut } from '../models/ZzzOdTeamsOut';
 import type { ZzzOdTeamsSaveIn } from '../models/ZzzOdTeamsSaveIn';
@@ -569,6 +600,25 @@ export class Service {
         });
     }
     /**
+     * 获取用户配置目录
+     * @param requestBody
+     * @returns UserConfigDirOut Successful Response
+     * @throws ApiError
+     */
+    public static getUserConfigDirApiScriptsUserConfigDirPost(
+        requestBody: UserConfigDirIn,
+    ): CancelablePromise<UserConfigDirOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/user/config-dir',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * 添加用户
      * @param requestBody
      * @returns UserCreateOut Successful Response
@@ -664,14 +714,52 @@ export class Service {
         });
     }
     /**
+     * 设置基建班次
+     * @param requestBody
+     * @returns UserInfrastPlanSelectOut Successful Response
+     * @throws ApiError
+     */
+    public static setInfrastPlanSelectApiScriptsUserInfrastructurePlanSelectPost(
+        requestBody: UserInfrastPlanSelectIn,
+    ): CancelablePromise<UserInfrastPlanSelectOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/user/infrastructure/plan-select',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 获取当前基建班次
+     * @param requestBody
+     * @returns UserInfrastPlanSelectOut Successful Response
+     * @throws ApiError
+     */
+    public static getInfrastPlanSelectApiScriptsUserInfrastructurePlanSelectGetPost(
+        requestBody: UserDeleteIn,
+    ): CancelablePromise<UserInfrastPlanSelectOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/user/infrastructure/plan-select/get',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * 用户自定义基建排班可选项
      * @param requestBody
-     * @returns ComboBoxOut Successful Response
+     * @returns UserInfrastPlanComboxOut Successful Response
      * @throws ApiError
      */
     public static getUserComboxInfrastructureApiScriptsUserComboxInfrastructurePost(
         requestBody: UserDeleteIn,
-    ): CancelablePromise<ComboBoxOut> {
+    ): CancelablePromise<UserInfrastPlanComboxOut> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/scripts/user/combox/infrastructure',
@@ -721,14 +809,14 @@ export class Service {
         });
     }
     /**
-     * MAA 仓库库存（label=数量字符串，value=物品ID）
+     * MAA 仓库库存（当前用户档案；label=数量字符串，value=物品ID）
      * @param requestBody
-     * @returns ComboBoxOut Successful Response
+     * @returns MaaDepotInventoryOut Successful Response
      * @throws ApiError
      */
     public static getMaaDepotInventoryApiScriptsMaaDepotInventoryPost(
-        requestBody: ScriptDeleteIn,
-    ): CancelablePromise<ComboBoxOut> {
+        requestBody: Body_get_maa_depot_inventory_api_scripts_maa_depot_inventory_post,
+    ): CancelablePromise<MaaDepotInventoryOut> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/scripts/maa/depot/inventory',
@@ -740,14 +828,25 @@ export class Service {
         });
     }
     /**
-     * MAA 干员养成选择器目录（一图流全量表，稀有度降序）
-     * @param requestBody
+     * 森空岛绑定角色列表（遍历已配置森空岛凭据的签到账号组，明日方舟）
      * @returns ComboBoxOut Successful Response
+     * @throws ApiError
+     */
+    public static getMaaCultivateSklandBindingsApiScriptsMaaCultivateSklandBindingsPost(): CancelablePromise<ComboBoxOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maa/cultivate/skland/bindings',
+        });
+    }
+    /**
+     * MAA 干员养成选择器目录（含技能/模组名称目录，稀有度降序）
+     * @param requestBody
+     * @returns MaaCultivateOperatorsOut Successful Response
      * @throws ApiError
      */
     public static getMaaCultivateOperatorsApiScriptsMaaCultivateOperatorsPost(
         requestBody: Body_get_maa_cultivate_operators_api_scripts_maa_cultivate_operators_post,
-    ): CancelablePromise<ComboBoxOut> {
+    ): CancelablePromise<MaaCultivateOperatorsOut> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/scripts/maa/cultivate/operators',
@@ -854,6 +953,159 @@ export class Service {
         });
     }
     /**
+     * 查看 MFW 脚本的内嵌副本状态
+     * @param requestBody
+     * @returns MaaFWEmbeddedStatusOut Successful Response
+     * @throws ApiError
+     */
+    public static getMaafwEmbeddedStatusApiScriptsMaafwEmbeddedStatusPost(
+        requestBody: MaaFWEmbeddedIn,
+    ): CancelablePromise<MaaFWEmbeddedStatusOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maafw/embedded/status',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 按来源目录导入（或重新导入）副本
+     * 脚本页选目录就是走这里：第一次是导入，之后是换来源或按当前来源重导。
+     *
+     * 导入成功才把来源写进 Info.Path；失败时旧副本与旧来源都原样不动。
+     * @param requestBody
+     * @returns MaaFWEmbeddedStatusOut Successful Response
+     * @throws ApiError
+     */
+    public static reimportMaafwEmbeddedApiScriptsMaafwEmbeddedReimportPost(
+        requestBody: MaaFWEmbeddedReimportIn,
+    ): CancelablePromise<MaaFWEmbeddedStatusOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maafw/embedded/reimport',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 列出可作为克隆来源的其它 MFW 脚本
+     * 新建脚本对话框里「复用已有脚本的项目」的候选：有健康副本的 MFW / M9A 脚本。
+     *
+     * 新建时脚本还没建出来，所以不要求 ``scriptId``；传了就把它自己排除掉。
+     * @param requestBody
+     * @returns MaaFWEmbeddedSourcesOut Successful Response
+     * @throws ApiError
+     */
+    public static listMaafwEmbeddedSourcesApiScriptsMaafwEmbeddedSourcesPost(
+        requestBody?: MaaFWEmbeddedSourcesIn,
+    ): CancelablePromise<MaaFWEmbeddedSourcesOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maafw/embedded/sources',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 从另一个 MFW 脚本的副本克隆，同一项目再建一个脚本
+     * 同一个项目要开第二、第三个脚本（不同模拟器并行跑）时走这里，不用再选目录
+     * 重新投影，来源目录已经删了也能建。
+     *
+     * 副本从源脚本的副本硬链接克隆（运行时、模型与其它副本共用，只多小文件），
+     * ``Info.Path`` 与 ``Embedded.*`` 沿用源脚本的记录；类型随项目（M9A 项目 → M9A）。
+     * 用户、任务队列与运行设置不带——那是「复制脚本」的事。
+     * @param requestBody
+     * @returns MaaFWEmbeddedStatusOut Successful Response
+     * @throws ApiError
+     */
+    public static cloneMaafwEmbeddedApiScriptsMaafwEmbeddedClonePost(
+        requestBody: MaaFWEmbeddedCloneIn,
+    ): CancelablePromise<MaaFWEmbeddedStatusOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maafw/embedded/clone',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 列出项目目录里外壳（MFAAvalonia / MXU / MFW-PyQt6）保存的配置实例
+     * 新建脚本引导最后一步用：外壳里配好的每份实例都可以导入成一个用户。只读外壳文件。
+     * @param requestBody
+     * @returns MaaFWShellInstancesOut Successful Response
+     * @throws ApiError
+     */
+    public static listMaafwShellInstancesApiScriptsMaafwShellInstancesPost(
+        requestBody: MaaFWShellInstancesIn,
+    ): CancelablePromise<MaaFWShellInstancesOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maafw/shell-instances',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 把选中的外壳配置实例导入成用户
+     * 每个实例建一个用户：用户名取实例名，任务队列与任务选项一起导入。
+     *
+     * 逐个实例独立处理，失败原因与当前项目里对不上而跳过的任务 / 选项写在各项结果里。
+     * @param requestBody
+     * @returns MaaFWShellInstanceImportOut Successful Response
+     * @throws ApiError
+     */
+    public static importMaafwShellInstancesApiScriptsMaafwShellInstancesImportPost(
+        requestBody: MaaFWShellInstanceImportIn,
+    ): CancelablePromise<MaaFWShellInstanceImportOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maafw/shell-instances/import',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 按所选 resource 推断 MFW 项目的安卓游戏包名
+     * 脚本编辑页读完 interface / 切换 resource 时调用，把推出来的包名直接填进表单。
+     *
+     * 只看 resource 的 pipeline，不带用户任务的 pipeline_override（编辑脚本时还没有
+     * 运行计划）；推不出或多个候选都按原样返回，由前端决定不填。
+     * @param requestBody
+     * @returns MaaFWGamePackageOut Successful Response
+     * @throws ApiError
+     */
+    public static resolveMaafwGamePackageApiScriptsMaafwGamePackagePost(
+        requestBody: MaaFWGamePackageIn,
+    ): CancelablePromise<MaaFWGamePackageOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/maafw/game-package',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * 预览 MFW interface
      * 读取 MaaFW 项目 interface，并返回 controller/resource/task 摘要。
      * @param requestBody
@@ -919,36 +1171,6 @@ export class Service {
             url: '/api/scripts/maafw/agent-env/prepare',
             body: requestBody,
             mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * 获取 M9A 可用任务列表（排除 standalone 任务）
-     * 获取 M9A 可用任务列表（排除 standalone 任务）
-     *
-     * 前端调用此接口获取可选择的任务列表，
-     * 用于展示在用户编辑界面的任务选择区域。
-     *
-     * Args:
-     * script_id: M9A 脚本 ID
-     *
-     * Returns:
-     * dict: 包含任务列表的响应
-     * @param scriptId
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static getM9AAvailableTasksApiScriptsM9ATasksAvailablePost(
-        scriptId: string,
-    ): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/scripts/m9a/tasks/available',
-            query: {
-                'script_id': scriptId,
-            },
             errors: {
                 422: `Validation Error`,
             },
@@ -1036,6 +1258,48 @@ export class Service {
                 'userId': userId,
                 'configName': configName,
                 'useMasConfig': useMasConfig,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 获取 BAAH 配置文件名列表
+     * 返回 BAAH 配置目录下已有的配置文件名（不含 ``.json`` 后缀）。
+     * @param scriptId
+     * @returns ComboBoxOut Successful Response
+     * @throws ApiError
+     */
+    public static getBaahConfigNamesApiApiScriptsBaahConfigNamesGet(
+        scriptId: string,
+    ): CancelablePromise<ComboBoxOut> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/scripts/baah/config-names',
+            query: {
+                'scriptId': scriptId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 获取碧蓝档案活动状态
+     * 返回指定服正在进行的活动，没有则返回下一个未开始的活动。
+     * @param lineType
+     * @returns BlueArchiveActivityStatusOut Successful Response
+     * @throws ApiError
+     */
+    public static getBaahActivityStatusApiApiScriptsBaahActivityStatusGet(
+        lineType: 'JP' | 'Globle' | 'CN' = 'CN',
+    ): CancelablePromise<BlueArchiveActivityStatusOut> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/scripts/baah/activity-status',
+            query: {
+                'lineType': lineType,
             },
             errors: {
                 422: `Validation Error`,
@@ -1331,8 +1595,10 @@ export class Service {
      * 按步骤名翻转 Plan 中某战斗实例的启用状态（同组多实例各自独立启停）。
      *
      * 步骤名由行实例 uid 决定（形如 ``自动秘境`` / ``自动秘境-3``），与前端展示用的
-     * 「后名」解耦，改名不会丢设置。仅写入执行层消费的 enabled 标记，不影响原生
-     * 一条龙副本；运行时 build_combat_steps 按 step.enabled 决定是否纳入执行层。
+     * 「后名」解耦，改名不会丢设置。本接口只写 Plan（不改原生副本文件），但它是前端
+     * 队列行的启停开关：运行时 build_combat_steps 按 step.enabled 决定是否纳入执行层，
+     * 且 AutoProxy 会把 Plan 中配过实例的战斗组整体从原生副本剔除——因此 enabled=false
+     * 的最终语义是「本次不跑」，而不是「退回原生一条龙跑」。
      *
      * 步骤不存在时（刚另存为/复制出来的新实例）先创建再设启用——否则开关只改前端、
      * 后端无步骤可写，刷新后回退。
@@ -1495,7 +1761,9 @@ export class Service {
      * 把右栏编辑后的配置组 json（项目顺序 + 各项目 jsScriptSettingsObject）写回
      * 该用户的 per-user 副本（``data/{script}/{user}/ScriptGroup/{name}.json``）。
      *
-     * 不触碰 BetterGI 全局 ``User/ScriptGroup/{name}.json`` 同名实配。
+     * 「路径」类引用（名字含 ``/``）不能作文件名，落盘到 ``per_user_copy_name`` 的确定性别名
+     * （右栏把路径项加成多项目配置组后需要载体）。不触碰 BetterGI 全局
+     * ``User/ScriptGroup/{name}.json`` 同名实配。
      * @param requestBody
      * @returns OutBase Successful Response
      * @throws ApiError
@@ -1675,6 +1943,113 @@ export class Service {
         });
     }
     /**
+     * 获取实例槽总览（原生实例 / MAS 绑定槽 / 无主残留）
+     * 槽目录是 MAS 分配在一条龙安装目录里的，注册表与 GUI 都看不到。
+     *
+     * 这份对照表用于诊断「槽目录数与用户数对不上」（绑定但没跑过的槽没有目录）
+     * 与定位无主残留。
+     * @param scriptId
+     * @returns ZzzOdSlotsOut Successful Response
+     * @throws ApiError
+     */
+    public static getZzzodSlotsApiApiScriptsZzzodSlotsGet(
+        scriptId: string,
+    ): CancelablePromise<ZzzOdSlotsOut> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/scripts/zzzod/slots',
+            query: {
+                'scriptId': scriptId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 清理无主实例槽（先归档进回收池再删目录）
+     * 原生实例与被任一 ZzzOd 用户绑定的槽一律不动，返回实际回收的槽号。
+     * @param requestBody
+     * @returns ZzzOdSlotCleanOut Successful Response
+     * @throws ApiError
+     */
+    public static cleanZzzodSlotsApiApiScriptsZzzodSlotsCleanPost(
+        requestBody: ZzzOdSlotCleanIn,
+    ): CancelablePromise<ZzzOdSlotCleanOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/zzzod/slots/clean',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 获取实例槽回收池（被删用户/脚本留下的槽内容与备份池快照）
+     * 槽目录按安装根指纹归池，跨脚本共享；只有 ``kind=slot`` 的条目可恢复。
+     * @param scriptId
+     * @returns ZzzOdRecycleOut Successful Response
+     * @throws ApiError
+     */
+    public static getZzzodRecycleApiApiScriptsZzzodRecycleGet(
+        scriptId: string,
+    ): CancelablePromise<ZzzOdRecycleOut> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/scripts/zzzod/recycle',
+            query: {
+                'scriptId': scriptId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 清空实例槽回收池（删除后不可找回，不碰配置恢复池）
+     * 只删 recycle 池；onedragon 原生池与 mas 配置恢复池不受影响。
+     * @param requestBody
+     * @returns ZzzOdRecycleClearOut Successful Response
+     * @throws ApiError
+     */
+    public static clearZzzodRecycleApiApiScriptsZzzodRecycleClearPost(
+        requestBody: ZzzOdRecycleClearIn,
+    ): CancelablePromise<ZzzOdRecycleClearOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/zzzod/recycle/clear',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 把回收池里的槽快照恢复给某个 MAS 用户（现有用户或新建用户，先存底）
+     * 恢复的落点是**用户的绑定槽**（``targetUser`` 指定现有用户，或
+     * ``newUserName`` 新建一个用户）——只物化内容而不建立绑定的恢复没有出口，
+     * MAS 下次运行不会认领它。目标用户已有绑定槽时覆盖其内容，恢复前先存底。
+     * @param requestBody
+     * @returns OutBase Successful Response
+     * @throws ApiError
+     */
+    public static restoreZzzodRecycleApiApiScriptsZzzodRecycleRestorePost(
+        requestBody: ZzzOdRecycleRestoreIn,
+    ): CancelablePromise<OutBase> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/zzzod/recycle/restore',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * 获取预备编队列表（名称 + 绑定配队方案）
      * 读绑定槽（直控传 instanceIdx 读原生实例）的 team.yml（固定 20 个编队）。
      * @param scriptId
@@ -1842,7 +2217,7 @@ export class Service {
     }
     /**
      * 保存实例原生配置（直控模式直接写回一条龙原始 YAML）
-     * 白名单过滤后写回所选实例 game_account.yml、_group.yml 与 instance_run，随后回读最新数据。
+     * 白名单过滤后写回所选实例 game_account.yml、_group.yml、instance_run 与 after_done，随后回读最新数据。
      * @param requestBody
      * @returns ZzzOdNativeConfigOut Successful Response
      * @throws ApiError
@@ -1947,8 +2322,36 @@ export class Service {
         });
     }
     /**
+     * 为 HSR 用户登录云·星穹铁道
+     * 起该用户的云浏览器并用三月七的 ``game`` 任务等用户在窗口里登录。
+     *
+     * 阻塞到三月七退出为止（最长为登录等待 + 最长排队 + 余量），与正在运行的
+     * 任务互斥：脚本运行中或三月七目录被占用时返回 409。成功后写
+     * ``Cloud.LastLogin``。
+     * @param requestBody
+     * @returns HSRCloudLoginOut Successful Response
+     * @throws ApiError
+     */
+    public static postHsrCloudLoginApiApiScriptsHsrCloudLoginPost(
+        requestBody: HSRCloudLoginIn,
+    ): CancelablePromise<HSRCloudLoginOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/scripts/hsr/cloud-login',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * 获取 HSR 托管配置字段
-     * 返回原生动态托管字段；用户 ID 只负责归属校验。
+     * 返回原生动态托管字段。
+     *
+     * 传了用户 ID 时先做归属校验，再按该用户的配置来源决定表单读哪份计划：
+     * 「脚本」读脚本共享计划，「用户」读该用户自己的计划；不传用户 ID 时读
+     * 脚本共享计划。响应的 ``plan_owner`` 指明保存目标。
      * @param scriptId
      * @param userId
      * @returns HSRManagedConfigOut Successful Response
@@ -1992,49 +2395,9 @@ export class Service {
         });
     }
     /**
-     * 导入 HSR 原生配置快照
-     * @param requestBody
-     * @returns HSRDirectConfigImportOut Successful Response
-     * @throws ApiError
-     */
-    public static importHsrDirectConfigApiApiScriptsHsrDirectConfigImportPost(
-        requestBody: HSRDirectConfigImportIn,
-    ): CancelablePromise<HSRDirectConfigImportOut> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/scripts/hsr/direct-config/import',
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * 清除 HSR 用户的直控配置快照
-     * 清掉该用户导入的快照，直控回到直接使用脚本当前原生配置。
-     * @param requestBody
-     * @returns HSRDirectConfigImportOut Successful Response
-     * @throws ApiError
-     */
-    public static clearHsrDirectConfigApiApiScriptsHsrDirectConfigClearPost(
-        requestBody: HSRDirectConfigImportIn,
-    ): CancelablePromise<HSRDirectConfigImportOut> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/scripts/hsr/direct-config/clear',
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
      * 获取 OK-NTE 配置文件列表及 schema
      * 获取 OK-NTE 配置文件列表及 schema 定义。
-     * 读写用户配置目录（data/{script_id}/{user_id}/ConfigFile/），
-     * 若为空则自动从 ok-nte configs 目录初始化默认配置。
+     * 读写用户快速配置目录，首次从已有来源初始化，不修改来源文件。
      *
      * Args:
      * script_id: OK-NTE 脚本 ID
@@ -2093,7 +2456,8 @@ export class Service {
     }
     /**
      * 列出配置备份（时间倒序；target 取值由专项定义，非法值返回 400）
-     * 运行/会话下发前与编辑界面进出会自动归档，内容无变化跳过。
+     * 返回 ``items``（``time`` + 备份时点来源标注 ``mode``，倒序）与当前
+     * 来源 ``mode``（仅三态池，供前端跨来源提示）；非法 target 返回 400。
      * @param scriptId
      * @param userId
      * @param target
@@ -2141,7 +2505,9 @@ export class Service {
     /**
      * 把指定备份恢复到目标位置（恢复前自动存底当前配置，误恢复可找回）
      * 恢复语义由专项池定义：脚本原生池恢复到脚本本体，MAS 用户池恢复到
-     * 用户配置并按需回填前端表单。
+     * 用户配置并按需回填前端表单。备份来自其他配置来源（脚本级/用户级）时
+     * 由服务层把配置来源切回备份时点再恢复；提示由前端据备份列表与当前
+     * 来源比对给出。
      * @param requestBody
      * @returns ConfigBackupRestoreOut Successful Response
      * @throws ApiError
@@ -2183,6 +2549,39 @@ export class Service {
                 'userId': userId,
                 'time': time,
                 'target': target,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * 只读读取指定备份内一个文本文件（预览「查看原始文件」用，路径限归档内）
+     * 路径越界/文件超限/池未实现查看能力均返回 400，message 说明原因。
+     * @param scriptId
+     * @param userId
+     * @param time
+     * @param target
+     * @param path
+     * @returns ConfigBackupFileOut Successful Response
+     * @throws ApiError
+     */
+    public static getConfigBackupFileApiApiScriptsBackupFileGet(
+        scriptId: string,
+        userId: string,
+        time: string,
+        target: string,
+        path: string,
+    ): CancelablePromise<ConfigBackupFileOut> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/scripts/backup/file',
+            query: {
+                'scriptId': scriptId,
+                'userId': userId,
+                'time': time,
+                'target': target,
+                'path': path,
             },
             errors: {
                 422: `Validation Error`,
@@ -3056,6 +3455,18 @@ export class Service {
         });
     }
     /**
+     * 查询通知渠道描述
+     * 返回通知渠道描述表，仅展示元数据，不含任何配置值。
+     * @returns NotifyChannelsOut Successful Response
+     * @throws ApiError
+     */
+    public static getNotifyChannelsApiSettingNotifyChannelsGet(): CancelablePromise<NotifyChannelsOut> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/setting/notify/channels',
+        });
+    }
+    /**
      * 调试日志模式
      * 调试单条日志模式配置，返回逐行/逐窗口匹配结果
      *
@@ -3180,6 +3591,21 @@ export class Service {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/setting/virtual-display/check',
+        });
+    }
+    /**
+     * 立即拆除虚拟显示器
+     * 用户明示要拆：真实显示器回来时的询问弹窗和设置页的「立即拆除」都走这里。
+     *
+     * 任务在不在跑都照办。拆完守卫的巡检照常：桌面上还有真实输出就什么都不做，一块都没有
+     * 的话下一轮会重新挂上——要彻底停用得关开关。
+     * @returns VirtualDisplayDetachOut Successful Response
+     * @throws ApiError
+     */
+    public static detachVirtualDisplayApiSettingVirtualDisplayDetachPost(): CancelablePromise<VirtualDisplayDetachOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/setting/virtual-display/detach',
         });
     }
     /**

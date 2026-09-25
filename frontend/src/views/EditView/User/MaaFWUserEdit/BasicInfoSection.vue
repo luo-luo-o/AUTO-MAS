@@ -24,17 +24,18 @@
           />
         </a-form-item>
       </a-col>
-      <a-col :xs="12" :md="4">
+      <a-col :xs="12" :md="8">
         <a-form-item :label="t('edit.enabled2')">
-          <a-switch
-            v-model:checked="formData.Info.Status"
-            :checked-children="t('edit.enabled3')"
-            :un-checked-children="t('edit.disabled')"
-            @change="emitSave('Info.Status', formData.Info.Status)"
+          <!-- 和同一行的其他控件一样用下拉，别一个开关孤零零地矮一截 -->
+          <a-select
+            v-model:value="statusValue"
+            size="large"
+            style="width: 100%"
+            :options="statusOptions"
           />
         </a-form-item>
       </a-col>
-      <a-col :xs="12" :md="6">
+      <a-col :xs="12" :md="8">
         <a-form-item :label="t('edit.daysLeft')">
           <a-input-number
             v-model:value="formData.Info.RemainedDay"
@@ -44,34 +45,6 @@
             style="width: 100%"
             @blur="emitSave('Info.RemainedDay', formData.Info.RemainedDay)"
           />
-        </a-form-item>
-      </a-col>
-      <a-col :xs="24" :md="6">
-        <a-form-item :label="t('edit.applyPreset')">
-          <a-dropdown
-            trigger="click"
-            :disabled="interfaceDependentDisabled || presetOptions.length === 0"
-          >
-            <a-button
-              size="large"
-              block
-              class="preset-switch-button"
-              :disabled="interfaceDependentDisabled || presetOptions.length === 0"
-            >
-              <span>{{ selectedPresetLabel }}</span>
-              <DownOutlined />
-            </a-button>
-            <template #overlay>
-              <a-menu
-                :selected-keys="formData.Task.SelectedPreset ? [formData.Task.SelectedPreset] : []"
-                @click="(event: MenuInfo) => emit('presetMenuClick', event)"
-              >
-                <a-menu-item v-for="item in presetOptions" :key="item.name">
-                  {{ getDisplayName(item) }}
-                </a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
         </a-form-item>
       </a-col>
     </a-row>
@@ -91,7 +64,7 @@
             v-model:value="formData.Info.Account"
             size="large"
             autocomplete="off"
-            :placeholder="t('edit.localNoteOnly')"
+            :placeholder="accountPlaceholder || t('edit.localNoteOnly')"
             @blur="emitSave('Info.Account', formData.Info.Account)"
           />
         </a-form-item>
@@ -128,90 +101,49 @@
       </a-col>
     </a-row>
     <a-alert class="account-record-alert" type="info" show-icon :message="accountRecordTooltip" />
-
-    <a-row :gutter="24">
-      <a-col :span="24">
-        <GeneralConfigModeSelector
-          :model-value="formData.Info.Mode || '用户'"
-          :options="maafwConfigModeOptions"
-          :quick-config="formData.Info.IfQuickConfig ?? true"
-          :alert-message="t('edit.configSourceHintBase')"
-          @change="emit('modeChange', $event)"
-          @quick-config-change="emitSave('Info.IfQuickConfig', $event)"
-        />
-      </a-col>
-    </a-row>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import type { MenuInfo } from 'ant-design-vue/es/menu/src/interface'
-import { DownOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
-import type { MaaFWPresetInfo, MaaFWUserConfig } from '@/types/script'
-import GeneralConfigModeSelector from '@/views/EditView/User/GeneralConfigModeSelector.vue'
+import { computed } from 'vue'
+import { QuestionCircleOutlined } from '@ant-design/icons-vue'
+import type { MaaFWUserConfig } from '@/types/script'
 
 const { t } = useI18n()
-
-// 配置来源卡片（value 为后端 Info.Mode 取值，驱动逻辑需保持原样；文案走词表）
-const maafwConfigModeOptions: Array<{
-  label: string
-  value: '脚本' | '用户' | '直控'
-  title: string
-  description: string
-  icon: 'database' | 'file' | 'setting'
-}> = [
-  {
-    label: t('edit.script'),
-    value: '脚本',
-    title: t('edit.script'),
-    description: t('edit.useScriptS'),
-    icon: 'database',
-  },
-  {
-    label: t('edit.user'),
-    value: '用户',
-    title: t('edit.user'),
-    description: t('edit.useThisUserS'),
-    icon: 'database',
-  },
-  {
-    label: t('edit.directControl'),
-    value: '直控',
-    title: t('edit.directControl'),
-    description: '直接使用脚本原生配置，MAS 不写入配置',
-    icon: 'setting',
-  },
-]
 
 type MaaFWUserFormData = MaaFWUserConfig & {
   userName: string
 }
 
-type DisplayItem = {
-  name: string
-  label?: string | null
-}
-
-defineProps<{
+const props = defineProps<{
   formData: MaaFWUserFormData
-  presetOptions: MaaFWPresetInfo[]
-  selectedPresetLabel: string
   interfaceDependentDisabled: boolean
   accountRecordTooltip: string
+  /** 账号字段占位：特调类型（M9A）把账号绑成切号任务，文案不再是「仅本地记录」 */
+  accountPlaceholder?: string
 }>()
 
 const emit = defineEmits<{
   save: [key: string, value: unknown]
-  presetMenuClick: [event: MenuInfo]
-  modeChange: [value: boolean | string]
 }>()
-
-const getDisplayName = (item: DisplayItem) => item.label || item.name
 
 const emitSave = (key: string, value: unknown) => {
   emit('save', key, value)
 }
+
+// 启用状态用下拉表达；a-select 的值只认字符串 / 数字，这里和布尔互转
+const statusOptions = computed(() => [
+  { label: t('edit.enabled3'), value: 'on' },
+  { label: t('edit.disabled'), value: 'off' },
+])
+const statusValue = computed({
+  get: () => (props.formData.Info.Status ? 'on' : 'off'),
+  set: (value: string) => {
+    props.formData.Info.Status = value === 'on'
+    emitSave('Info.Status', props.formData.Info.Status)
+  },
+})
 </script>
 
 <style scoped>
@@ -220,9 +152,18 @@ const emitSave = (key: string, value: unknown) => {
 }
 
 .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 16px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .section-header h3 {
@@ -252,20 +193,6 @@ const emitSave = (key: string, value: unknown) => {
 
 .account-record-alert {
   margin-bottom: 16px;
-}
-
-.preset-switch-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.preset-switch-button span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .help-icon {

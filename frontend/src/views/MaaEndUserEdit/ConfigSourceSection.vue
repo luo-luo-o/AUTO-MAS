@@ -7,9 +7,6 @@
           :options="maaEndConfigModeOptions"
           :disabled="loading"
           :alert-message="t('edit.configSourceHintBase')"
-          :quick-config="formData.Info.IfQuickConfig"
-          :quick-config-disabled="presetSupported === false"
-          @quick-config-change="emitSave('Info.IfQuickConfig', $event)"
           @change="$emit('modeChange', $event)"
         />
       </a-col>
@@ -20,6 +17,7 @@
         <a-form-item :label="t('edit.maaEndConfigActions')">
           <div class="config-source-control">
             <a-button
+              v-if="formData.Info.Mode !== '直控'"
               type="primary"
               ghost
               :loading="configLoading"
@@ -71,8 +69,7 @@ import { computed } from 'vue'
 import GeneralConfigModeSelector from '@/views/EditView/User/GeneralConfigModeSelector.vue'
 
 const { t } = useI18n()
-const emit = defineEmits<{
-  save: [key: string, value: any]
+defineEmits<{
   configure: []
   importConfig: []
   scriptConfig: []
@@ -82,7 +79,6 @@ const emit = defineEmits<{
 const formData = defineModel<any>('formData', { required: true })
 defineProps<{
   loading: boolean
-  presetSupported?: boolean
   configLoading?: boolean
   importLoading?: boolean
   showConfigMask?: boolean
@@ -114,15 +110,9 @@ const maaEndConfigModeOptions: Array<{
   },
 ]
 
-const emitSave = (key: string, value: any) => {
-  emit('save', key, value)
-}
-
-const currentConfigModeLabel = computed(() => {
-  if (formData.value.Info.Mode === '直控') return '脚本直控'
-  if (formData.value.Info.Mode === '用户') return '用户独立'
-  return '脚本共享'
-})
+const currentConfigModeLabel = computed(() =>
+  formData.value.Info.Mode === '用户' ? '用户独立' : '脚本共享'
+)
 </script>
 
 <style scoped>

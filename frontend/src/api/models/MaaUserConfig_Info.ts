@@ -52,10 +52,6 @@ export type MaaUserConfig_Info = {
      */
     InfrastName?: (string | null);
     /**
-     * 基建方案索引
-     */
-    InfrastIndex?: (string | null);
-    /**
      * 密码
      */
     Password?: (string | null);
@@ -103,10 +99,6 @@ export type MaaUserConfig_Info = {
      * 备选关卡 - 3
      */
     Stage_3?: (string | null);
-    /**
-     * 剩余理智关卡
-     */
-    Stage_Remain?: (string | null);
     /**
      * 状态标签列表
      */

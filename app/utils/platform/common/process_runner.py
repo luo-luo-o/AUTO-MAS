@@ -1,8 +1,13 @@
 import asyncio
 import locale
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+
+from app.utils.logger import get_logger
+
+logger = get_logger("进程管理")
 
 
 @dataclass
@@ -10,6 +15,19 @@ class ProcessResult:
     stdout: str
     stderr: str
     returncode: int
+
+    def failure_detail(self) -> str:
+        """命令失败时的可读文案：returncode / stdout / stderr 一个都不能少。
+
+        模拟器命令崩溃时这三者常常一起为空（雷电的 dnconsole.exe 返回 3221225480
+        就是这种形态），只回 stdout 的话界面上只剩「命令执行失败: 」加一个空串，
+        用户分不清是路径配置错、实例不存在，还是模拟器自身挂了。
+        """
+
+        return (
+            f"returncode={self.returncode}, "
+            f"stdout={self.stdout!r}, stderr={self.stderr!r}"
+        )
 
 
 # 在导入时求值一次: locale.getpreferredencoding() 每次调用都会做一轮
@@ -96,6 +114,9 @@ class ProcessRunner:
         其余（taskkill/schtasks/adb 等工具）保持默认 False，留在监督器的 Job 里。
         """
 
+        command = [str(program), *args]
+        started_at = time.monotonic()
+        logger.debug(f"启动子进程: {command}")
         process = await create_subprocess(
             program,
             *args,
@@ -115,7 +136,15 @@ class ProcessRunner:
             with suppress(ProcessLookupError):
                 process.kill()
             await process.wait()
+            logger.warning(
+                f"子进程执行超时，已结束进程: {command} - 用时: "
+                f"{time.monotonic() - started_at:.3f}秒 - 超时时间: {timeout}秒"
+            )
             raise
+
+        logger.info(
+            f"子进程已退出: {command} - 用时: {time.monotonic() - started_at:.3f}秒"
+        )
 
         return ProcessResult(
             stdout=decode_bytes(stdout),

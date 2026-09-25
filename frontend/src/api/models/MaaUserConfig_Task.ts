@@ -32,17 +32,13 @@ export type MaaUserConfig_Task = {
      */
     IfSwitchTheme?: (boolean | null);
     /**
-     * 自动肉鸽
-     */
-    IfRoguelike?: (boolean | null);
-    /**
-     * 生息演算
-     */
-    IfReclamation?: (boolean | null);
-    /**
      * 库存保持
      */
     IfDepotMaintain?: (boolean | null);
+    /**
+     * 库存保持计划 JSON
+     */
+    DepotMaintainPlans?: (string | null);
     /**
      * 绿票商店
      */
@@ -60,10 +56,6 @@ export type MaaUserConfig_Task = {
      */
     ActivityMedicineNumb?: (number | null);
     /**
-     * 库存保持计划 JSON
-     */
-    DepotMaintainPlans?: (string | null);
-    /**
      * 干员养成
      */
     IfCultivate?: (boolean | null);
@@ -79,5 +71,13 @@ export type MaaUserConfig_Task = {
      * 资源收集期跳过养成计划
      */
     CultivateSkipDuringResourceCollection?: (boolean | null);
+    /**
+     * 森空岛绑定的签到账号组 UUID（空=未绑定）
+     */
+    CultivateSklandAccount?: (string | null);
+    /**
+     * 森空岛绑定角色的游戏 uid（非森空岛 userId）
+     */
+    CultivateSklandUid?: (string | null);
 };
 

@@ -43,11 +43,8 @@ from app.models.emulator import DeviceBase
 from app.models.schema import WSTaskNoticeData
 from app.models.task import LogRecord, ScriptItem, TaskExecuteBase
 from app.services import Notify, System
-from app.task.proxy_helpers import (
-    CONFIG_SOURCE_USER,
-    append_push_log,
-    resolve_config_source,
-)
+from app.task.proxy_helpers import append_push_log
+from app.tools.bluearchive_activity import BlueArchiveLineType, has_running_activity
 from app.utils import LogMonitor, ProcessManager, compile_log_signs, get_logger
 from app.utils.constants import UTC4
 
@@ -128,6 +125,12 @@ class AutoProxyTask(TaskExecuteBase):
         ## 两个总开关在 prepare() 里按脚本配置初始化，这里给出保守默认值
         self.if_manage_config = True
         self.push_log_enabled = True
+        ## 活动适配开关与判定所用的服，在 check() 里按用户配置初始化
+        self.if_activity_adapt = False
+        self.activity_line_type: BlueArchiveLineType = "CN"
+        ## 本次运行实际使用的配置文件名：check() 里确定，prepare() 复用，
+        ## 避免一次任务里重复查询第三方活动排期
+        self.effective_config_name: str | None = None
         ## log_box：任务节点采集（受「推送任务节点详情」开关控制，关闭时不创建）
         self.log_collect: LogCollect | None = None
         self.script_log_path: Path | None = None
@@ -151,6 +154,60 @@ class AutoProxyTask(TaskExecuteBase):
         self.log_dir = self.root_path / LOG_DIR_RELATIVE
         self.software_config_path = self.root_path / SOFTWARE_CONFIG_RELATIVE
 
+    async def _resolve_effective_config_name(self) -> str:
+        """决定本次运行使用哪份 BAAH 配置文件。
+
+        开启活动适配且当前有进行中的活动时用活动配置，其余情况（未开启、
+        没有活动、排期取不到、活动配置名无效）都用默认配置。
+
+        Returns:
+            str: 规范化后的配置名。
+
+        Raises:
+            ValueError: 默认配置名为空或含路径分隔符。
+        """
+
+        if self.effective_config_name is not None:
+            return self.effective_config_name
+
+        self.if_activity_adapt = bool(
+            self.cur_user_config.get("Info", "IfActivityAdapt")
+        )
+        self.activity_line_type = self.cur_user_config.get("Info", "ActivityLineType")
+
+        default_name = resolve_config_name(
+            str(self.cur_user_config.get("Info", "ConfigName"))
+        )
+        self.effective_config_name = default_name
+
+        ## or "" 兜住 None：str(None) 会得到 "None"，被当成配置名去找 None.json
+        activity_name = (
+            self.cur_user_config.get("Info", "ActivityConfigName") or ""
+        ).strip()
+        if not self.if_activity_adapt or not activity_name:
+            return self.effective_config_name
+
+        running = await has_running_activity(self.activity_line_type)
+        if running is None:
+            logger.warning("未取到碧蓝档案活动排期, 本次使用默认配置文件运行")
+            return self.effective_config_name
+
+        if not running:
+            logger.info("碧蓝档案当前没有进行中的活动, 使用默认配置文件运行")
+            return self.effective_config_name
+
+        try:
+            activity_config_name = resolve_config_name(activity_name)
+        except ValueError as e:
+            logger.warning(f"活动配置文件名称 {e}, 本次使用默认配置文件运行")
+            return self.effective_config_name
+
+        logger.info(
+            f"碧蓝档案当前有进行中的活动, 使用活动配置文件 {activity_config_name}"
+        )
+        self.effective_config_name = activity_config_name
+        return self.effective_config_name
+
     async def check(self) -> str:
         """校验 BAAH 运行所需的路径与用户配置"""
 
@@ -159,9 +216,7 @@ class AutoProxyTask(TaskExecuteBase):
             return "未找到 BAAH 主程序, 请检查脚本配置中的主程序路径设置！"
 
         try:
-            config_name = resolve_config_name(
-                str(self.cur_user_config.get("Info", "ConfigName"))
-            )
+            config_name = await self._resolve_effective_config_name()
         except ValueError as e:
             self.cur_user_item.status = "异常"
             return f"{e}, 请在用户配置中填写 BAAH 配置文件名称！"
@@ -195,27 +250,27 @@ class AutoProxyTask(TaskExecuteBase):
 
         ## 配置托管总开关：关闭时照常启动 BAAH，但不改动它的任何配置文件
         self.if_manage_config = bool(self.script_config.get("Script", "IfManageConfig"))
-        ## 配置来源三态（脚本/用户/直控）与独立的快速配置开关：
-        ## - 脚本/用户来源：按脚本级「配置托管」总开关决定是否注入托管项
-        ## - 直控+开启：注入托管项（面板值），任务结束按既有 managed_backup 恢复
-        ## - 直控+关闭：完全按 BAAH 自己的配置文件运行，零写入
-        self.config_mode, self.direct_control = resolve_config_source(
-            self.cur_user_config, CONFIG_SOURCE_USER
-        )
-        if self.direct_control and not bool(
-            self.cur_user_config.get("Info", "IfQuickConfig")
-        ):
-            self.if_manage_config = False
+        ## BAAH 没有用户快速配置面板，模拟器等托管项只受脚本级总开关控制。
         ## 推送任务节点详情开关：关闭时**不创建 log_box**（不读日志、不匹配），
         ## 该用户 push_log 保持为空，报告自然不含 BAAH 的任务节点；任务日志记录
         ## 与结果判定都不受它影响，照常进行
         self.push_log_enabled = bool(self.script_config.get("Script", "PushLogEnabled"))
         self.log_collect = None
 
-        config_name = resolve_config_name(
-            str(self.cur_user_config.get("Info", "ConfigName"))
-        )
+        ## 配置文件名在 check() 里已按活动排期定好，这里复用同一结果
+        config_name = await self._resolve_effective_config_name()
         self.user_config_path = resolve_user_config_path(self.config_dir, config_name)
+
+        ## 运行前归档该用户的 BAAH 配置（按用户分桶，指纹去重，失败不阻断
+        ## 任务）：此刻配置文件尚未被托管项改写，是「本轮动手前」的完整现场
+        from .tools.backup_archive import archive_native_backup
+
+        try:
+            archive_native_backup(self.config_dir, config_name, str(self.cur_user_uid))
+        except Exception:
+            logger.opt(exception=True).warning(
+                "BAAH 运行前配置归档失败，已跳过（不阻断任务）"
+            )
 
     async def main_task(self):
         """自动代理模式主逻辑"""

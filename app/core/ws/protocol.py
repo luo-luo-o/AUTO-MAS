@@ -60,6 +60,8 @@ TASK_CREATED = "task.created"
 
 # 应用生命周期与电源（id=Main）
 BACKEND_SHUTDOWN_READY = "backend.shutdown.ready"
+# 启动期攒下来、主连接建立后一次性发出的系统通知（id=Main）：配置迁移结果之类。
+SYSTEM_NOTICE = "system.notice"
 FRONTEND_CLOSE_REQUESTED = "frontend.close.requested"
 POWER_COUNTDOWN_UPDATED = "power.countdown.updated"
 POWER_COUNTDOWN_CANCELLED = "power.countdown.cancelled"
@@ -70,6 +72,8 @@ UPDATE_PROGRESS = "update.progress"
 
 # MFW 运行环境准备（下载 MaaFramework、建 agent 环境），id 用脚本 ID
 MAAFW_ENV_PREPARE_PROGRESS = "maafw.env-prepare.progress"
+# MFW 项目手动更新过程（检查 / 下载 / 覆盖 / 校验与逐行日志），id 用脚本 ID
+MAAFW_PROJECT_UPDATE_PROGRESS = "maafw.project-update.progress"
 UPDATE_COMPLETED = "update.completed"
 UPDATE_FAILED = "update.failed"
 UPDATE_CANCELLED = "update.cancelled"
@@ -83,6 +87,10 @@ TOOLKIT_NOTICE = "toolkit.notice"
 
 # 模拟器启动 / 关闭 / 显示 / 隐藏这类后台操作结束（id=EmulatorManager）
 EMULATOR_OPERATION_FINISHED = "emulator.operation.finished"
+
+# 虚拟显示器（id=Main）：真实显示器回来了但有任务在跑，问用户要不要拆；以及提示已作废
+DISPLAY_DETACH_PROMPT = "display.detach.prompt"
+DISPLAY_DETACH_PROMPT_CLOSED = "display.detach.prompt.closed"
 
 
 # ==================== 主连接关闭码（后端 → 前端） ====================

@@ -28,9 +28,11 @@ from app.core import Config, EmulatorManager
 from app.core.ws import Publisher, protocol
 from app.models.config import MaaEndConfig, MaaEndUserConfig
 from app.models.ConfigBase import MultipleConfig
+from app.models.emulator import DeviceProvider
 from app.models.schema import WSTaskNoticeData
 from app.models.task import ScriptItem, TaskExecuteBase, UserItem
 from app.task.emulator_core import close_emulator
+from app.tools.push_log import build_user_result_text
 from app.utils import get_logger
 from app.utils.constants import TASK_MODE_ZH
 from app.utils.io import (
@@ -45,6 +47,7 @@ from .AutoProxy import AutoProxyTask
 from .resource_loader import load_maaend_controller_protocol
 from .ScriptConfig import ScriptConfigTask, maaend_config_mode
 from .tools import push_notification
+from .tools.backup_archive import archive_native_backup
 
 logger = get_logger("MaaEnd 调度器")
 
@@ -57,7 +60,12 @@ METHOD_BOOK: dict[str, type[AutoProxyTask | ScriptConfigTask]] = {
 class MaaEndManager(TaskExecuteBase):
     """MaaEnd 控制器"""
 
-    def __init__(self, script_info: ScriptItem):
+    def __init__(
+        self,
+        script_info: ScriptItem,
+        *,
+        device_provider: DeviceProvider | None = None,
+    ):
         super().__init__()
 
         if script_info.task_info is None:
@@ -72,6 +80,7 @@ class MaaEndManager(TaskExecuteBase):
         self.temp_path: Path | None = None
         self.had_original_script_config = False
         self.script_config_mode = "脚本"
+        self._device_provider = device_provider
 
     async def check(self) -> str:
         if self.task_info.mode not in METHOD_BOOK:
@@ -136,7 +145,10 @@ class MaaEndManager(TaskExecuteBase):
 
         # 初始化模拟器管理器
         if self.controller_protocol == "Adb":
-            self.emulator_manager = await EmulatorManager.get_emulator_instance(
+            device_provider = (
+                self._device_provider or EmulatorManager.get_emulator_instance
+            )
+            self.emulator_manager = await device_provider(
                 self.script_config.get("Game", "EmulatorId")
             )
         else:
@@ -151,6 +163,13 @@ class MaaEndManager(TaskExecuteBase):
             script_id=self.script_info.script_id,
         ):
             self.had_original_script_config = True
+
+        # 任务级一次性归档 MaaEnd 原生配置（项目级池，指纹去重，失败不阻断
+        # 任务）：原生配置物理上跨用户共享，只代表「本轮任务动手前」的安装
+        # 现场，必须在任何下发前归档这一次
+        if self.maaend_config_dir.exists():
+            with suppress(Exception):
+                archive_native_backup(self.maaend_config_dir)
 
         # 构建用户列表
         if self.task_info.mode == "ScriptConfig":
@@ -217,9 +236,11 @@ class MaaEndManager(TaskExecuteBase):
         # 配置会话的唯一出口就是用户在配置窗口点「保存配置」发起的中止,
         # 因此这里不能把 stopped_manually 当作丢弃的依据, 否则直控模式下
         # MaaEnd GUI 的写回会被随后的配置复原抹掉。
+        # viewOnly 查看会话不保留任何现场改动，结束后恢复任务前快照。
         return (
             self.task_info.mode == "ScriptConfig"
             and self.script_config_mode == "直控"
+            and not self.task_info.view_only
             and bool(self.script_info.user_list)
             and self.script_info.user_list[0].status == "完成"
         )
@@ -251,12 +272,16 @@ class MaaEndManager(TaskExecuteBase):
                 if config_mode == "直控":
                     await self._restore_script_config_from_temp()
 
-            task = METHOD_BOOK[self.task_info.mode](
-                self.script_info,
-                self.script_config,
-                self.user_config,
-                self.emulator_manager,
+            kwargs: dict = dict(
+                script_info=self.script_info,
+                script_config=self.script_config,
+                user_config=self.user_config,
+                emulator_manager=self.emulator_manager,
             )
+            if self.task_info.mode == "ScriptConfig":
+                # 查看会话（view_only）仅 ScriptConfig 模式支持：只读打开原生 GUI
+                kwargs["view_only"] = self.task_info.view_only
+            task = METHOD_BOOK[self.task_info.mode](**kwargs)
             try:
                 await self.spawn(task)
             finally:
@@ -280,7 +305,10 @@ class MaaEndManager(TaskExecuteBase):
         logger.success(f"已解锁脚本配置 {self.script_info.script_id}")
 
         if self.task_info.mode in ["AutoProxy"]:
-            await close_emulator(self)
+            await close_emulator(
+                self,
+                index=self.script_config.get("Game", "EmulatorIndex"),
+            )
             await Config.ScriptConfig[
                 uuid.UUID(self.script_info.script_id)
             ].UserData.load(await self.user_config.toDict())
@@ -297,6 +325,9 @@ class MaaEndManager(TaskExecuteBase):
             )
 
             title = f"{datetime.now().strftime('%m-%d')} | {self.script_info.name or '空白'}的{TASK_MODE_ZH[self.task_info.mode]}任务报告"
+            # 按用户交错组装「用户结果行 + 该用户节点详情」：
+            # 开关关闭的用户未启 log_box，push_log 为空，自然只有结果行。
+            has_uncompleted = error_count + wait_count > 0
             result = {
                 "title": f"{TASK_MODE_ZH[self.task_info.mode]}任务报告",
                 "script_name": self.script_info.name or "空白",
@@ -304,7 +335,9 @@ class MaaEndManager(TaskExecuteBase):
                 "end_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "completed_count": over_count,
                 "uncompleted_count": error_count + wait_count,
-                "result": self.script_info.result,
+                "result": build_user_result_text(
+                    self.script_info.user_list, has_uncompleted
+                ),
             }
 
             try:

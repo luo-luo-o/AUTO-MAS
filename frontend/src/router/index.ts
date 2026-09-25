@@ -2,7 +2,15 @@ import { createRouter, createWebHashHistory, type LocationQueryRaw } from 'vue-r
 import { useAppInitialization } from '@/composables/useAppInitialization'
 import { getInitializationDecision } from '@/utils/initializationDecision'
 import { startSkippedInitializationStartup } from '@/utils/skippedInitializationStartup'
+import { MAAFW_SPECIAL_FLAVORS } from '@/composables/useMaaFWFlavor'
+import { buildMaaFWFlavorRoutes } from './maafwFlavorRoutes'
 const logger = window.electronAPI.getLogger('路由管理')
+
+// 特调（M9A / MSS ……）没有专用页面，路由按特调注册表生成
+const maafwFlavorRoutes = buildMaaFWFlavorRoutes(MAAFW_SPECIAL_FLAVORS, {
+  script: () => import('../views/EditView/Script/MaaFWScriptEdit.vue'),
+  user: () => import('../views/EditView/User/MaaFWUserEdit.vue'),
+})
 
 // 异步按需加载调度中心，避免弹窗窗口提前执行相关逻辑
 const SchedulerView = () => import('../views/scheduler/index.vue')
@@ -75,12 +83,8 @@ const routes = [
     component: () => import('../views/EditView/Script/MaaEndScriptEdit.vue'),
     meta: { title: '编辑MaaEnd脚本' },
   },
-  {
-    path: '/scripts/:id/edit/m9a',
-    name: 'M9AScriptEdit',
-    component: () => import('../views/EditView/Script/M9AScriptEdit.vue'),
-    meta: { title: '编辑M9A脚本' },
-  },
+  // MaaFW 的特调类型（M9A / MSS ……）按特调注册表生成，与 MFW 同一个组件
+  ...maafwFlavorRoutes.scriptEdit,
   {
     path: '/scripts/:id/edit/maafw',
     name: 'MaaFWScriptEdit',
@@ -172,12 +176,7 @@ const routes = [
     component: () => import('../views/EditView/User/MaaEndUserEdit.vue'),
     meta: { title: '添加MaaEnd用户' },
   },
-  {
-    path: '/scripts/:scriptId/users/add/m9a',
-    name: 'M9AUserAdd',
-    component: () => import('../views/EditView/User/M9AUserEdit.vue'),
-    meta: { title: '添加M9A用户' },
-  },
+  ...maafwFlavorRoutes.userAdd,
   {
     path: '/scripts/:scriptId/users/add/maafw',
     name: 'MaaFWUserAdd',
@@ -202,12 +201,7 @@ const routes = [
     component: () => import('../views/EditView/User/MaaEndUserEdit.vue'),
     meta: { title: '编辑MaaEnd用户' },
   },
-  {
-    path: '/scripts/:scriptId/users/:userId/edit/m9a',
-    name: 'M9AUserEdit',
-    component: () => import('../views/EditView/User/M9AUserEdit.vue'),
-    meta: { title: '编辑M9A用户' },
-  },
+  ...maafwFlavorRoutes.userEdit,
   {
     path: '/scripts/:scriptId/users/:userId/edit/maafw',
     name: 'MaaFWUserEdit',
@@ -352,6 +346,13 @@ const routes = [
     name: 'Logs',
     component: () => import('../views/Logs.vue'),
     meta: { title: '日志查看', skipGuard: true },
+  },
+  {
+    // 主进程另开的小窗口：真实显示器回来了但有任务在跑，问用户要不要拆虚拟屏
+    path: '/vdd-prompt',
+    name: 'VirtualDisplayPrompt',
+    component: () => import('../views/VirtualDisplayPrompt.vue'),
+    meta: { title: '虚拟显示器', skipGuard: true },
   },
 ]
 

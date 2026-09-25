@@ -25,9 +25,10 @@ import copy
 import os
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Literal
+from typing import Callable, Dict, Literal
 
 import app.task as task
 from app.core.desktop_guard import ensure_desktop_available
@@ -64,6 +65,7 @@ from .config import (
     MaaConfig,
     MaaEndConfig,
     MaaFWConfig,
+    MSSConfig,
     OkNteConfig,
     OkwwConfig,
     SrcConfig,
@@ -92,6 +94,57 @@ System = LazyProxy("app.services", "System")
 
 # 脚本配置类名 → 脚本类型键（与 ScriptCreateIn.type 词表一致）
 _SCRIPT_TYPE_BY_CLASS = {cls.__name__: key for key, cls in CLASS_BOOK.items()}
+
+
+@dataclass(frozen=True)
+class _ManagerBuildContext:
+    """构造脚本调度器所需的额外输入（占用归属与 SRC 根路径）。"""
+
+    script_uid: uuid.UUID
+    reservation_owner: str
+    src_root_path: Path | None
+    reservations: "_ScriptTaskReservations"
+
+
+def _build_src_manager(
+    script_item: ScriptItem, ctx: _ManagerBuildContext
+) -> TaskExecuteBase:
+    """SRC 要把 src 根路径的占用回调交给调度器，占用记在构建上下文的预留表里。"""
+
+    if ctx.src_root_path is None:
+        raise RuntimeError("SRC 路径占用未初始化")
+    return task.SrcManager(
+        script_item,
+        reserved_src_root_path=ctx.src_root_path,
+        reserve_src_root=lambda root_path: ctx.reservations.try_acquire(
+            ctx.script_uid,
+            ctx.reservation_owner,
+            src_root_path=root_path,
+        ),
+    )
+
+
+# 脚本配置类 → 调度器工厂。各配置类互不为父子（都直接继承 ConfigBase），
+# 按 type 精确查表；新增脚本类型在这里注册一条即可。工厂体内经 task 包
+# 惰性取类，维持 app/task/__init__.py 为 worker 子进程设的导入隔离。
+_MANAGER_BOOK: dict[
+    type, Callable[[ScriptItem, _ManagerBuildContext], TaskExecuteBase]
+] = {
+    MaaConfig: lambda script_item, _ctx: task.MaaManager(script_item),
+    GeneralConfig: lambda script_item, _ctx: task.GeneralManager(script_item),
+    OkwwConfig: lambda script_item, _ctx: task.OkwwManager(script_item),
+    OkNteConfig: lambda script_item, _ctx: task.OkNteManager(script_item),
+    MaaEndConfig: lambda script_item, _ctx: task.MaaEndManager(script_item),
+    # 特调类型是 MaaFWConfig 的子类，但这张表按类型精确查，得单独登记一行。
+    M9AConfig: lambda script_item, _ctx: task.MaaFWEmbeddedManager(script_item),
+    MSSConfig: lambda script_item, _ctx: task.MaaFWEmbeddedManager(script_item),
+    HSRConfig: lambda script_item, _ctx: task.HSRManager(script_item),
+    BetterGIConfig: lambda script_item, _ctx: task.BetterGIManager(script_item),
+    ZzzOdConfig: lambda script_item, _ctx: task.ZzzOdManager(script_item),
+    BAAHConfig: lambda script_item, _ctx: task.BAAHManager(script_item),
+    MaaFWConfig: lambda script_item, _ctx: task.MaaFWEmbeddedManager(script_item),
+    SrcConfig: _build_src_manager,
+}
 
 logger = get_logger("业务调度")
 
@@ -397,46 +450,22 @@ class Task(TaskExecuteBase):
     ):
         """按脚本类型构造对应的脚本调度器，类型不支持时返回 None。
 
-        顺序执行与循环运行共用这一份分派，新增脚本类型只需改这里。
+        顺序执行与循环运行共用这一份分派，新增脚本类型在 _MANAGER_BOOK
+        注册一条工厂即可；各配置类互不为父子，按 type 精确查表。
         """
 
-        if isinstance(script_config, MaaConfig):
-            return task.MaaManager(script_item)
-        if isinstance(script_config, SrcConfig):
-            if src_root_path is None:
-                raise RuntimeError("SRC 路径占用未初始化")
-            return task.SrcManager(
-                script_item,
-                reserved_src_root_path=src_root_path,
-                reserve_src_root=lambda root_path, script_uid=script_uid, owner=reservation_owner: (
-                    self.script_reservations.try_acquire(
-                        script_uid,
-                        owner,
-                        src_root_path=root_path,
-                    )
-                ),
-            )
-        if isinstance(script_config, GeneralConfig):
-            return task.GeneralManager(script_item)
-        if isinstance(script_config, OkwwConfig):
-            return task.OkwwManager(script_item)
-        if isinstance(script_config, OkNteConfig):
-            return task.OkNteManager(script_item)
-        if isinstance(script_config, MaaEndConfig):
-            return task.MaaEndManager(script_item)
-        if isinstance(script_config, M9AConfig):
-            return task.M9AManager(script_item)
-        if isinstance(script_config, HSRConfig):
-            return task.HSRManager(script_item)
-        if isinstance(script_config, BetterGIConfig):
-            return task.BetterGIManager(script_item)
-        if isinstance(script_config, ZzzOdConfig):
-            return task.ZzzOdManager(script_item)
-        if isinstance(script_config, BAAHConfig):
-            return task.BAAHManager(script_item)
-        if isinstance(script_config, MaaFWConfig):
-            return task.MaaFWEmbeddedManager(script_item)
-        return None
+        build = _MANAGER_BOOK.get(type(script_config))
+        if build is None:
+            return None
+        return build(
+            script_item,
+            _ManagerBuildContext(
+                script_uid=script_uid,
+                reservation_owner=reservation_owner,
+                src_root_path=src_root_path,
+                reservations=self.script_reservations,
+            ),
+        )
 
     async def _run_cycle_task(self) -> None:
         """循环运行：按各队列项自己的周期，持续调度整个队列。
@@ -927,8 +956,13 @@ class _TaskManager:
         self._cleanup_tasks: set[asyncio.Task[None]] = set()
         self._stop_all_lock = asyncio.Lock()
         self._stopping_all = False
+        # 已通过 add_task 入口检查、尚未 execute 的任务数；停止全部任务要等它们落定再取快照
+        self._creating_tasks = 0
+        self._creating_tasks_idle = asyncio.Event()
+        self._creating_tasks_idle.set()
         self._startup_queue_started = False
-        self._startup_queue_running = False
+        # 正在等待/执行启动队列的连接回调任务，同一时间只有一个
+        self._startup_queue_task: asyncio.Task | None = None
 
     @staticmethod
     def _queue_script_entries(
@@ -1100,6 +1134,11 @@ class _TaskManager:
 
         uid = uuid.UUID(id)
 
+        # 停止全部任务期间拒绝新任务，否则它不在停止快照里，却会让停止流程
+        # 一直等到它自然跑完。从这里到下方计入 _creating_tasks 之间不能有 await。
+        if self._stopping_all:
+            raise RuntimeError("正在停止全部任务，暂不接受新任务")
+
         # 指定单个用户只对「脚本 + 自动代理」成立；队列到不了用户粒度，设置类任务
         # 的用户由 uid 自身表达。放在循环队列占用标记之前，避免拒绝时留下脏标记。
         if user_id is not None and (
@@ -1199,6 +1238,8 @@ class _TaskManager:
                 raise RuntimeError(f"任务 {script_config.get('Info', 'Name')} 已在运行")
             reservation_acquired = True
 
+        self._creating_tasks += 1
+        self._creating_tasks_idle.clear()
         try:
             logger.info(
                 f"创建任务: {task_uid}, 模式: {mode}, 触发来源: {trigger_source}"
@@ -1245,6 +1286,10 @@ class _TaskManager:
             self.task_handler.pop(task_uid, None)
             self.task_info.pop(task_uid, None)
             raise
+        finally:
+            self._creating_tasks -= 1
+            if self._creating_tasks == 0:
+                self._creating_tasks_idle.set()
 
         return task_uid
 
@@ -1292,12 +1337,23 @@ class _TaskManager:
                     if System.power_task is not None and not System.power_task.done():
                         await System.cancel_power_task()
 
+                    # 新任务已被拒绝；已过入口检查、正在发送创建通知的任务等它们
+                    # execute 之后再取快照，保证快照覆盖全部任务。
+                    await self._creating_tasks_idle.wait()
+
+                    # 先全部发出取消再统一等待，不让一个任务的收尾拖住其余任务的取消。
                     task_item_list = list(self.task_handler.values())
+                    if task_item_list:
+                        logger.info("等待全部任务中的子任务结束...")
                     for task_item in task_item_list:
                         if not task_item.is_closing:
                             task_item.cancel()
                             task_item.is_closing = True
-                            await task_item.accomplish.wait()
+                    await asyncio.gather(
+                        *(task_item.accomplish.wait() for task_item in task_item_list)
+                    )
+                    for task_item in task_item_list:
+                        logger.info(f"子任务已结束: {task_item.task_info.task_id}")
                     cleanup_tasks = [
                         cleanup for cleanup in self._cleanup_tasks if not cleanup.done()
                     ]
@@ -1330,14 +1386,17 @@ class _TaskManager:
     async def start_startup_queue(self):
         """开始运行启动时运行的调度队列"""
 
+        # 旧连接的回调还在等待时，新连接的回调不能直接跳过：旧回调随后会随旧连接
+        # 一起被取消，启动队列就要拖到下一次连接才跑。这里等它结束后再重新判断。
+        while (running_task := self._startup_queue_task) is not None:
+            logger.info("启动时任务正在等待运行，等待其结束后再判断")
+            await asyncio.wait({running_task})
+
         if self._startup_queue_started:
             logger.info("启动时任务已触发，跳过重复运行")
             return
-        if self._startup_queue_running:
-            logger.info("启动时任务正在等待运行，跳过重复触发")
-            return
 
-        self._startup_queue_running = True
+        self._startup_queue_task = asyncio.current_task()
 
         try:
             await asyncio.sleep(10)
@@ -1403,7 +1462,7 @@ class _TaskManager:
                     await queue.set("Data", "LastStartupTime", curday)
 
         finally:
-            self._startup_queue_running = False
+            self._startup_queue_task = None
 
         logger.success("启动时任务开始运行")
 

@@ -46,6 +46,7 @@ from .applaunch import AppLaunchResult
 from .guard import drift, load_baselines
 from .ldplayer14 import LDPlayer14Manager
 from .ldplayer14 import build_manager as build_ldplayer_manager
+from .master_mode import apply_host_mode, is_master_mode_enabled
 from .mumu6 import MuMu6Manager
 from .mumu6 import build_manager as build_mumu_manager
 from .settings import InstanceSettings
@@ -229,9 +230,12 @@ class Emulator2Manager(DeviceBase):
 
         应用那一步由后端的 :class:`~.applaunch.AppLaunchMixin` 走纯 adb 完成，
         **模拟器本来就开着时同样生效**——两家原生的带包启动参数在那种情况下会被
-        整条吞掉，见 :mod:`.applaunch`。拉不起来只记警告，不影响本方法的返回。
+        整条吞掉，见 :mod:`.applaunch`。拉不起来只记警告，不影响本方法的返回；
+        只有等不到安卓系统启动完成时抛 ``RuntimeError``，见 ``AppLaunchMixin.open``。
         """
         manager, native_index = await self._dispatch(idx)
+
+        self._apply_host_mode()
 
         # 守卫先于稳定模式：两者管的字段不重叠，但都要在实例真正起来之前写完
         await self.enforce_baseline(idx, "启动前")
@@ -248,6 +252,27 @@ class Emulator2Manager(DeviceBase):
                 logger.warning(f"设备 #{idx} 应用稳定模式失败，继续启动: {e}")
 
         return await manager.open(native_index, package_name)
+
+    def _apply_host_mode(self) -> None:
+        """起任一台设备前，按「大雷主人模式」对齐这条配置下**所有安装**的宿主层。
+
+        宿主层跟着安装走，不跟着实例走：MuMu 的小程序弹窗由常驻的多开器在它自己启动时弹，
+        雷电的加载页轮播由 ``dnplayer.exe`` 读安装目录的渠道配置，都和这次起的是哪台无关。
+        只在有实例要起时做，是因为这时用户明确在用这条配置；处理失败只记警告，不拦启动。
+        安卓端那层（雷电 ``cleanmode``、MuMu 桌面组件）仍由各后端在自己的启动钩子里做。
+        """
+        enabled = is_master_mode_enabled()
+        for path in self.paths:
+            label = path.alias or path.install_path
+            try:
+                changed = apply_host_mode(path.type, self._manager_exe(path), enabled)
+            except Exception as e:  # noqa: BLE001 - 见 docstring
+                logger.warning(f"{label} 的「大雷主人模式」宿主层处理失败: {e}")
+                continue
+            if changed:
+                logger.info(
+                    f"{label} 的「大雷主人模式」宿主层已{'应用' if enabled else '还原'}"
+                )
 
     async def launch_app(self, idx: str, package_name: str) -> AppLaunchResult:
         """在**已经在线**的设备上把应用拉起来，不重开模拟器。
