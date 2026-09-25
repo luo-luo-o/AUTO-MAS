@@ -399,6 +399,14 @@ router.beforeEach(async (to, from, next) => {
       beginBootstrap()
       void (async () => {
         try {
+          const runtimeMode = await window.electronAPI.getRuntimeLaunchMode?.()
+          if (runtimeMode && runtimeMode.mode !== 'off') {
+            const status = await window.electronAPI.backendStatus()
+            if (!status.isRunning) {
+              const result = await window.electronAPI.backendStart()
+              if (!result.success) throw new Error(result.error || '后端启动失败')
+            }
+          }
           const { connectWithRetry } = await import('@/composables/useAppLifecycle')
           await connectWithRetry()
         } catch (error) {

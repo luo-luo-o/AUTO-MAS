@@ -76,6 +76,8 @@ DEV_HTTP_PORT = 36164
 # 受 AUTO-MAS-Runtime 监督时由监督器注入的监听端口；受监督时只认它
 SUPERVISED_PORT_ENV = "AUTO_MAS_SUPERVISED_PORT"
 SUPERVISED_PORT_MIN = 1024
+INSTANCE_ID_ENV = "AUTO_MAS_INSTANCE_ID"
+PROFILE_DIR_ENV = "AUTO_MAS_PROFILE_DIR"
 
 
 class InterceptHandler(logging.Handler):
@@ -170,11 +172,9 @@ def resolve_http_port(development_environment: bool) -> int:
     用户已装正式版的端口。前端拉起后端时会注入 AUTO_MAS_HTTP_PORT，保证两侧
     始终对齐同一个端口。
 
-    受 AUTO-MAS-Runtime 监督时只认监督器注入的 AUTO_MAS_SUPERVISED_PORT：
-    监督器按实例类型自行选定端口（managed 缺省 36163、development 缺省 36164）
-    并据此做健康检查与关闭请求。后端若钉死 36163，受监督的开发版就会撞上同机
-    正在运行的正式版。该变量缺失或非法时回退 36163 并记 warning；.env、
-    AUTO_MAS_HTTP_PORT 与开发环境判据在受监督时一律忽略，优先级低于注入值。
+    受 AUTO-MAS-Runtime 监督时只认监督器注入的 AUTO_MAS_SUPERVISED_PORT。
+    该变量缺失或非法时直接失败，避免后端静默监听错误端口；.env、
+    AUTO_MAS_HTTP_PORT 与开发环境判据在受监督时一律忽略。
 
     Args:
         development_environment: 当前是否为开发环境。
@@ -205,14 +205,11 @@ def resolve_http_port(development_environment: bool) -> int:
 
 
 def _resolve_supervised_port() -> int:
-    """读取 Runtime 注入的 AUTO_MAS_SUPERVISED_PORT；缺失或非法时回退 36163。"""
+    """读取 Runtime 注入的 AUTO_MAS_SUPERVISED_PORT，失败时给出启动诊断。"""
 
     raw = os.getenv(SUPERVISED_PORT_ENV)
     if raw is None:
-        logger.warning(
-            f"受监督模式下未注入 {SUPERVISED_PORT_ENV}，回退 {DEFAULT_HTTP_PORT}"
-        )
-        return DEFAULT_HTTP_PORT
+        raise RuntimeError(f"受监督模式缺少 {SUPERVISED_PORT_ENV}，拒绝启动")
 
     try:
         port = int(str(raw).strip())
@@ -221,8 +218,7 @@ def _resolve_supervised_port() -> int:
     if SUPERVISED_PORT_MIN <= port <= 65535:
         return port
 
-    logger.warning(f"{SUPERVISED_PORT_ENV} 取值无效，回退 {DEFAULT_HTTP_PORT}: {raw!r}")
-    return DEFAULT_HTTP_PORT
+    raise RuntimeError(f"{SUPERVISED_PORT_ENV} 取值无效，拒绝启动: {raw!r}")
 
 
 @logger.catch
@@ -542,7 +538,12 @@ def main():
 
     async def run_server():
         http_port = resolve_http_port(development_environment)
-        logger.info(f"后端监听端口: {http_port}")
+        instance_id = os.getenv(INSTANCE_ID_ENV, "legacy")
+        profile_dir = os.getenv(PROFILE_DIR_ENV, "")
+        logger.info(
+            f"后端实例启动: instance_id={instance_id}, profile={profile_dir or '<default>'}, "
+            f"port={http_port}"
+        )
         # 主 WebSocket 心跳依赖协议层 ping/pong，显式配置底层参数
         config = uvicorn.Config(
             app,
@@ -558,7 +559,16 @@ def main():
         from app.core import Config
 
         Config.server = server
-        await server.serve()
+        try:
+            await server.serve()
+            logger.info(f"后端监听结束: instance_id={instance_id}, port={http_port}")
+        except Exception:
+            logger.exception(
+                f"后端监听失败: instance_id={instance_id}, profile={profile_dir or '<default>'}, port={http_port}"
+            )
+            raise
+        finally:
+            logger.info(f"后端实例退出: instance_id={instance_id}, port={http_port}")
 
     asyncio.run(run_server())
 

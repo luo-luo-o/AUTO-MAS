@@ -24,15 +24,27 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import socket
 import shutil
 import stat
 import threading
+import time
 import tomllib
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from time import sleep
 from typing import Any
+
+try:
+    import msvcrt  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - Windows only
+    msvcrt = None
+
+try:
+    import fcntl  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - POSIX only
+    fcntl = None
 
 import json5
 import tomli_w
@@ -100,6 +112,9 @@ _ALIASES: dict[str, str] = {
 
 # 进程内串行锁, 避免并发竞争写
 _WRITE_LOCK = threading.Lock()
+_PROFILE_LOCK_TIMEOUT = 30.0
+_PROFILE_LOCK_GUARD = threading.RLock()
+_PROFILE_LOCKS: dict[str, tuple[Any, int, int]] = {}
 
 # 删除重试: 任务收尾复原紧跟脚本进程结束, 等被占用的句柄释放
 _RMTREE_RETRIES = 5
@@ -504,6 +519,95 @@ def atomic_write(path: Path, data: bytes) -> None:
             raise
 
 
+class ProfileFileLock:
+    """跨进程配置锁，锁文件保留并由操作系统在进程退出时释放。"""
+
+    def __init__(self, path: Path, timeout: float = _PROFILE_LOCK_TIMEOUT) -> None:
+        self.path = path
+        self.timeout = timeout
+        self._handle: Any = None
+        self._key = ""
+        self._reentrant = False
+
+    def __enter__(self) -> "ProfileFileLock":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._key = str(self.path.resolve()).casefold() if os.name == "nt" else str(self.path.resolve())
+        with _PROFILE_LOCK_GUARD:
+            local = _PROFILE_LOCKS.get(self._key)
+            if local and local[1] == threading.get_ident():
+                _PROFILE_LOCKS[self._key] = (local[0], local[1], local[2] + 1)
+                self._handle = local[0]
+                self._reentrant = True
+                return self
+        deadline = time.monotonic() + self.timeout
+        while True:
+            with _PROFILE_LOCK_GUARD:
+                local = _PROFILE_LOCKS.get(self._key)
+                local_busy = local is not None and local[1] != threading.get_ident()
+            if local_busy:
+                if time.monotonic() >= deadline:
+                    logger.error(f"配置锁等待超时: {self.path} (local thread owner)")
+                    raise TimeoutError(f"配置锁等待超时: {self.path} (local thread owner)")
+                time.sleep(0.05)
+                continue
+            handle = self.path.open("a+b")
+            try:
+                if self.path.stat().st_size == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                handle.seek(0)
+                if os.name == "nt":
+                    if msvcrt is None:
+                        raise RuntimeError("Windows lock provider is unavailable")
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    if fcntl is None:
+                        raise RuntimeError("POSIX lock provider is unavailable")
+                    fcntl.lockf(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB, 1, 0, os.SEEK_SET)
+                handle.seek(0)
+                handle.truncate()
+                owner = {"pid": os.getpid(), "host": socket.gethostname(), "thread": threading.get_ident()}
+                handle.write(json.dumps(owner).encode("utf-8"))
+                handle.flush()
+                os.fsync(handle.fileno())
+                with _PROFILE_LOCK_GUARD:
+                    _PROFILE_LOCKS[self._key] = (handle, threading.get_ident(), 1)
+                self._handle = handle
+                return self
+            except (BlockingIOError, PermissionError, OSError) as exc:
+                handle.close()
+                if time.monotonic() >= deadline:
+                    try:
+                        owner = json.loads(self.path.read_text(encoding="utf-8"))
+                        detail = f"pid={owner.get('pid')}, host={owner.get('host')}"
+                    except (OSError, ValueError):
+                        detail = "unknown owner"
+                    logger.error(f"配置锁等待超时: {self.path} ({detail})")
+                    raise TimeoutError(f"配置锁等待超时: {self.path} ({detail})") from exc
+                time.sleep(0.05)
+
+    def __exit__(self, _type: Any, _value: Any, _traceback: Any) -> None:
+        if self._handle is None:
+            return
+        with _PROFILE_LOCK_GUARD:
+            local = _PROFILE_LOCKS.get(self._key)
+            if local is not None and local[0] is self._handle and local[2] > 1:
+                _PROFILE_LOCKS[self._key] = (local[0], local[1], local[2] - 1)
+                return
+            _PROFILE_LOCKS.pop(self._key, None)
+        try:
+            if os.name == "nt" and msvcrt is not None:
+                self._handle.seek(0)
+                msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
+            elif fcntl is not None:
+                fcntl.lockf(self._handle.fileno(), fcntl.LOCK_UN, 1, 0, os.SEEK_SET)
+        except OSError:
+            pass
+        finally:
+            self._handle.close()
+
+
 def read_file(path: Path, *, format: str | None = None) -> dict[str, Any] | str:
     """
     按后缀读取配置文件, 传 ``format`` 可强制改用指定后缀的解析器
@@ -546,12 +650,20 @@ def write_file(
     """
     _suffix = (format or path.suffix).lower()
     codec = _CODECS.get(_ALIASES.get(_suffix, _suffix))
-    if codec is not None:
-        atomic_write(path, codec[0](payload, encoding))
-        return
-    if not isinstance(payload, str):
-        raise ValueError(f"不支持的配置文件格式 `{_suffix}`，且内容非字符串")
-    atomic_write(path, payload.encode(encoding))
+    # 一个 profile 下所有配置文件共用同一把锁，覆盖序列化到原子替换的完整事务。
+    try:
+        with ProfileFileLock(path.parent / ".automas-profile.lock"):
+            if codec is not None:
+                atomic_write(path, codec[0](payload, encoding))
+                return
+            if not isinstance(payload, str):
+                raise ValueError(f"不支持的配置文件格式 `{_suffix}`，且内容非字符串")
+            atomic_write(path, payload.encode(encoding))
+    except TimeoutError:
+        raise
+    except BaseException:
+        logger.exception(f"配置文件保存失败: {path}")
+        raise
 
 
 def migrate_legacy_dir(old_path: Path, new_path: Path) -> bool:
