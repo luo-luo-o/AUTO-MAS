@@ -1132,6 +1132,8 @@ class _TaskManager:
             uuid.UUID: 任务 UID
         """
 
+        await Config.sync_config_cache_from_files()
+
         uid = uuid.UUID(id)
 
         # 停止全部任务期间拒绝新任务，否则它不在停止快照里，却会让停止流程

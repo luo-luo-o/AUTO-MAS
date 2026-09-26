@@ -30,11 +30,12 @@ import stat
 import threading
 import time
 import tomllib
-from contextlib import suppress
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from time import sleep
-from typing import Any
+from typing import Any, Protocol
 
 try:
     import msvcrt  # type: ignore[import-not-found]
@@ -54,6 +55,34 @@ from .logger import get_logger
 from .tools import decode_bytes
 
 logger = get_logger("路径迁移")
+
+
+class FileWriteGuard(Protocol):
+    """配置保存时可选的资源级写入校验。"""
+
+    paths: tuple[Path, ...]
+
+    def before_write(self, path: Path) -> None:
+        """在原子替换前校验当前写入是否仍被允许。"""
+
+    def after_write(self, path: Path) -> None:
+        """在原子替换成功后推进保存上下文版本。"""
+
+
+_CURRENT_WRITE_GUARD: ContextVar[FileWriteGuard | None] = ContextVar(
+    "current_file_write_guard", default=None
+)
+
+
+@contextmanager
+def file_write_guard(guard: FileWriteGuard):
+    """为现有配置保存链路安装一次资源级写入保护。"""
+
+    token = _CURRENT_WRITE_GUARD.set(guard)
+    try:
+        yield
+    finally:
+        _CURRENT_WRITE_GUARD.reset(token)
 
 
 class ConfigCorruptedError(ValueError):
@@ -227,6 +256,92 @@ def dir_fingerprint(path: Path) -> str:
         digest.update(str(entry.relative_to(path)).encode("utf-8", "surrogatepass"))
         digest.update(str(stat_result.st_size).encode("ascii"))
     return digest.hexdigest()
+
+
+def file_fingerprint(path: Path) -> str:
+    """
+    计算单个文件的内容指纹。
+
+    不存在的文件也返回稳定指纹，避免「空文件」与「缺文件」被误判为同一版本。
+    """
+
+    digest = hashlib.sha256()
+    if not path.exists():
+        digest.update(b"missing\0")
+        digest.update(str(path.name).encode("utf-8", "surrogatepass"))
+        return digest.hexdigest()
+
+    digest.update(b"file\0")
+    digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def file_collection_fingerprint(paths: list[Path] | tuple[Path, ...]) -> str:
+    """
+    计算一组文件的集合指纹。
+
+    集合指纹包含每个文件的归一化绝对路径和单文件指纹，文件顺序不影响结果。
+    """
+
+    digest = hashlib.sha256()
+    for path in sorted(paths, key=lambda item: str(item.resolve()).casefold()):
+        digest.update(str(path.resolve()).encode("utf-8", "surrogatepass"))
+        digest.update(b"\0")
+        digest.update(file_fingerprint(path).encode("ascii"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def atomic_write_with_fingerprint(path: Path, data: bytes) -> str:
+    """
+    原子写入并返回写入后的文件指纹。
+
+    Args:
+        path: 目标文件路径。
+        data: 待写入字节。
+
+    Returns:
+        写入完成后的单文件内容指纹。
+    """
+
+    atomic_write(path, data)
+    return file_fingerprint(path)
+
+
+def write_file_with_version(
+    path: Path,
+    payload: dict[str, Any] | str,
+    *,
+    expected_fingerprint: str,
+    encoding: str = "utf-8",
+    format: str | None = None,
+) -> str:
+    """
+    校验当前文件版本后原子写入，并返回新版本指纹。
+
+    Args:
+        path: 文件路径。
+        payload: 待写入内容。
+        expected_fingerprint: 调用方读取或进入编辑时记录的基础指纹。
+        encoding: 文本编码。
+        format: 强制序列化格式。
+
+    Raises:
+        RuntimeError: 当前指纹与预期不一致。
+    """
+
+    _suffix = (format or path.suffix).lower()
+    codec = _CODECS.get(_ALIASES.get(_suffix, _suffix))
+
+    with ProfileFileLock(path.parent / ".automas-profile.lock"):
+        current = file_fingerprint(path)
+        if current != expected_fingerprint:
+            raise RuntimeError("配置已被外部修改，请刷新后再保存")
+        if codec is not None:
+            return atomic_write_with_fingerprint(path, codec[0](payload, encoding))
+        if not isinstance(payload, str):
+            raise ValueError(f"不支持的配置文件格式 `{_suffix}`，且内容非字符串")
+        return atomic_write_with_fingerprint(path, payload.encode(encoding))
 
 
 @dataclass(frozen=True, slots=True)
@@ -705,12 +820,18 @@ def write_file(
     # 一个 profile 下所有配置文件共用同一把锁，覆盖序列化到原子替换的完整事务。
     try:
         with ProfileFileLock(path.parent / ".automas-profile.lock"):
+            guard = _CURRENT_WRITE_GUARD.get()
+            guarded = guard is not None and path in guard.paths
+            if guarded:
+                guard.before_write(path)
             if codec is not None:
                 atomic_write(path, codec[0](payload, encoding))
-                return
-            if not isinstance(payload, str):
-                raise ValueError(f"不支持的配置文件格式 `{_suffix}`，且内容非字符串")
-            atomic_write(path, payload.encode(encoding))
+            else:
+                if not isinstance(payload, str):
+                    raise ValueError(f"不支持的配置文件格式 `{_suffix}`，且内容非字符串")
+                atomic_write(path, payload.encode(encoding))
+            if guarded:
+                guard.after_write(path)
     except TimeoutError:
         raise
     except BaseException:

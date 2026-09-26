@@ -1,8 +1,14 @@
-import { createRouter, createWebHashHistory, type LocationQueryRaw } from 'vue-router'
+import {
+  createRouter,
+  createWebHashHistory,
+  type LocationQueryRaw,
+  type RouteLocationNormalized,
+} from 'vue-router'
 import { useAppInitialization } from '@/composables/useAppInitialization'
 import { getInitializationDecision } from '@/utils/initializationDecision'
 import { startSkippedInitializationStartup } from '@/utils/skippedInitializationStartup'
 import { MAAFW_SPECIAL_FLAVORS } from '@/composables/useMaaFWFlavor'
+import { useConfigEditSession, type ConfigResourceKey } from '@/composables/useConfigEditSession'
 import { buildMaaFWFlavorRoutes } from './maafwFlavorRoutes'
 const logger = window.electronAPI.getLogger('路由管理')
 
@@ -361,6 +367,30 @@ const router = createRouter({
   routes,
 })
 
+const getConfigEditResource = (route: RouteLocationNormalized): ConfigResourceKey | null => {
+  if (!route.path.startsWith('/scripts/')) return null
+  if (route.path.includes('/setup/')) return 'ScriptConfig'
+  if (route.path.includes('/edit/')) return 'ScriptConfig'
+  if (route.path.includes('/users/add/')) return 'ScriptConfig'
+  return null
+}
+
+const ensureConfigEditRoute = async (route: RouteLocationNormalized) => {
+  const resourceKey = getConfigEditResource(route)
+  if (!resourceKey) return true
+
+  const { ensureConfigEditSession } = useConfigEditSession()
+  return (await ensureConfigEditSession(resourceKey)) != null
+}
+
+const releaseLeftConfigEditRoute = (to: RouteLocationNormalized, from: RouteLocationNormalized) => {
+  const fromResourceKey = getConfigEditResource(from)
+  if (!fromResourceKey || fromResourceKey === getConfigEditResource(to)) return
+
+  const { releaseConfigEditSession } = useConfigEditSession()
+  void releaseConfigEditSession(fromResourceKey)
+}
+
 router.beforeEach(async (to, from, next) => {
   logger.info(`路由守卫：${JSON.stringify({ to: to.path, from: from.path })}`)
 
@@ -420,6 +450,10 @@ router.beforeEach(async (to, from, next) => {
         }
       })()
     }
+    if (!(await ensureConfigEditRoute(to))) {
+      next(false)
+      return
+    }
     return next()
   }
 
@@ -448,7 +482,16 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
+  if (!(await ensureConfigEditRoute(to))) {
+    next(false)
+    return
+  }
+
   next()
+})
+
+router.afterEach((to, from) => {
+  releaseLeftConfigEditRoute(to, from)
 })
 
 export function navigateTo(

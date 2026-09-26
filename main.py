@@ -595,6 +595,7 @@ def main():
     from fastapi.middleware.cors import CORSMiddleware
 
     from app.api import (
+        config_edit_router,
         core_router,
         dispatch_router,
         emulator2_router,
@@ -630,6 +631,7 @@ def main():
     )
 
     app.include_router(core_router)
+    app.include_router(config_edit_router)
     app.include_router(info_router)
     app.include_router(scripts_router)
     app.include_router(plan_router)

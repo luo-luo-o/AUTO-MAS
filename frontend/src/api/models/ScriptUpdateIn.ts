@@ -17,6 +17,14 @@ import type { SrcConfig } from './SrcConfig';
 import type { ZzzOdConfig } from './ZzzOdConfig';
 export type ScriptUpdateIn = {
     /**
+     * 编辑租约令牌
+     */
+    editLeaseToken?: (string | null);
+    /**
+     * 进入编辑时的基础指纹
+     */
+    baseVersion?: (string | null);
+    /**
      * 脚本ID
      */
     scriptId: string;

@@ -31,6 +31,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from app.core import Config
+from app.core.config_edit import ConfigEditError
 from app.models.config import BetterGIConfig as RuntimeBetterGIConfig
 from app.models.config import OkNteConfig as RuntimeOkNteConfig
 from app.models.schema import *
@@ -45,6 +46,18 @@ from app.utils.io import ConfigCorruptedError
 
 router = APIRouter(prefix="/api/scripts", tags=["脚本管理"])
 logger = get_logger("脚本管理 API")
+
+
+def _config_edit_scope(resource_key: str, payload: Any):
+    return Config.config_edit_scope(
+        resource_key,
+        token=payload.editLeaseToken,
+        base_version=payload.baseVersion,
+    )
+
+
+def _webhook_resource_key(webhook: WebhookInBase) -> str:
+    return "ScriptConfig" if webhook.scriptId else "Config"
 
 
 def _bettergi_script_config(script_id: str):
@@ -227,8 +240,17 @@ USER_BOOK = {
 async def add_script(script: ScriptCreateIn = Body(...)) -> ScriptCreateOut:
 
     try:
-        uid, config = await Config.add_script(script.type, script.scriptId)
-        data = SCRIPT_BOOK[type(config).__name__](**(await config.toDict()))
+        with _config_edit_scope("ScriptConfig", script):
+            uid, config = await Config.add_script(script.type, script.scriptId)
+            data = SCRIPT_BOOK[type(config).__name__](**(await config.toDict()))
+    except ConfigEditError as e:
+        return ScriptCreateOut(
+            code=e.code,
+            status="error",
+            message=e.message,
+            scriptId="",
+            data=GeneralConfig(**{}),
+        )
     except Exception as e:
         logger.opt(exception=True).warning(f"add_script失败: {type(e).__name__}: {e}")
         return ScriptCreateOut(
@@ -281,9 +303,12 @@ async def get_script(script: ScriptGetIn = Body(...)) -> ScriptGetOut:
 async def update_script(script: ScriptUpdateIn = Body(...)) -> OutBase:
 
     try:
-        await Config.update_script(
-            script.scriptId, script.data.model_dump(exclude_unset=True)
-        )
+        with _config_edit_scope("ScriptConfig", script):
+            await Config.update_script(
+                script.scriptId, script.data.model_dump(exclude_unset=True)
+            )
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"update_script失败: {type(e).__name__}: {e}"
@@ -304,7 +329,10 @@ async def update_script(script: ScriptUpdateIn = Body(...)) -> OutBase:
 async def delete_script(script: ScriptDeleteIn = Body(...)) -> OutBase:
 
     try:
-        await Config.del_script(script.scriptId)
+        with _config_edit_scope("ScriptConfig", script):
+            await Config.del_script(script.scriptId)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"delete_script失败: {type(e).__name__}: {e}"
@@ -325,7 +353,10 @@ async def delete_script(script: ScriptDeleteIn = Body(...)) -> OutBase:
 async def reorder_script(script: ScriptReorderIn = Body(...)) -> OutBase:
 
     try:
-        await Config.reorder_script(script.indexList)
+        with _config_edit_scope("ScriptConfig", script):
+            await Config.reorder_script(script.indexList)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"reorder_script失败: {type(e).__name__}: {e}"
@@ -346,7 +377,10 @@ async def reorder_script(script: ScriptReorderIn = Body(...)) -> OutBase:
 async def import_script_from_web(script: ScriptUrlIn = Body(...)) -> OutBase:
 
     try:
-        await Config.import_script_from_web(script.scriptId, script.url)
+        with _config_edit_scope("ScriptConfig", script):
+            await Config.import_script_from_web(script.scriptId, script.url)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"import_script_from_web失败: {type(e).__name__}: {e}"
@@ -392,7 +426,10 @@ async def import_script_config_file(
 ) -> OutBase:
 
     try:
-        await Config.import_script_config_file(config.scriptId, config.userId)
+        with _config_edit_scope("ScriptConfig", config):
+            await Config.import_script_config_file(config.scriptId, config.userId)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"import_script_config_file失败: {type(e).__name__}: {e}"
@@ -514,12 +551,21 @@ async def get_user_config_dir(user: UserConfigDirIn = Body(...)) -> UserConfigDi
     response_model=UserCreateOut,
     status_code=200,
 )
-async def add_user(user: UserInBase = Body(...)) -> UserCreateOut:
+async def add_user(user: UserCreateIn = Body(...)) -> UserCreateOut:
 
     try:
-        uid, config = await Config.add_user(user.scriptId)
-        data = USER_BOOK[type(Config.ScriptConfig[uuid.UUID(user.scriptId)]).__name__](
-            **(await config.toDict())
+        with _config_edit_scope("ScriptConfig", user):
+            uid, config = await Config.add_user(user.scriptId)
+            data = USER_BOOK[type(Config.ScriptConfig[uuid.UUID(user.scriptId)]).__name__](
+                **(await config.toDict())
+            )
+    except ConfigEditError as e:
+        return UserCreateOut(
+            code=e.code,
+            status="error",
+            message=e.message,
+            userId="",
+            data=GeneralUserConfig(**{}),
         )
     except FileNotFoundError as e:
         return UserCreateOut(
@@ -593,7 +639,10 @@ async def update_user(user: UserUpdateIn = Body(...)) -> OutBase:
             )
 
     try:
-        await Config.update_user(user.scriptId, user.userId, data)
+        with _config_edit_scope("ScriptConfig", user):
+            await Config.update_user(user.scriptId, user.userId, data)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(f"update_user失败: {type(e).__name__}: {e}")
         return OutBase(
@@ -612,7 +661,10 @@ async def update_user(user: UserUpdateIn = Body(...)) -> OutBase:
 async def delete_user(user: UserDeleteIn = Body(...)) -> OutBase:
 
     try:
-        await Config.del_user(user.scriptId, user.userId)
+        with _config_edit_scope("ScriptConfig", user):
+            await Config.del_user(user.scriptId, user.userId)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(f"delete_user失败: {type(e).__name__}: {e}")
         return OutBase(
@@ -631,7 +683,10 @@ async def delete_user(user: UserDeleteIn = Body(...)) -> OutBase:
 async def reorder_user(user: UserReorderIn = Body(...)) -> OutBase:
 
     try:
-        await Config.reorder_user(user.scriptId, user.indexList)
+        with _config_edit_scope("ScriptConfig", user):
+            await Config.reorder_user(user.scriptId, user.indexList)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(f"reorder_user失败: {type(e).__name__}: {e}")
         return OutBase(
@@ -650,7 +705,10 @@ async def reorder_user(user: UserReorderIn = Body(...)) -> OutBase:
 async def import_infrastructure(user: UserSetIn = Body(...)) -> OutBase:
 
     try:
-        await Config.set_infrastructure(user.scriptId, user.userId, user.jsonFile)
+        with _config_edit_scope("ScriptConfig", user):
+            await Config.set_infrastructure(user.scriptId, user.userId, user.jsonFile)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"import_infrastructure失败: {type(e).__name__}: {e}"
@@ -672,8 +730,13 @@ async def set_infrast_plan_select(
     user: UserInfrastPlanSelectIn = Body(...),
 ) -> UserInfrastPlanSelectOut:
     try:
-        index = await Config.set_infrast_plan_select(
-            user.scriptId, user.userId, user.index
+        with _config_edit_scope("ScriptConfig", user):
+            index = await Config.set_infrast_plan_select(
+                user.scriptId, user.userId, user.index
+            )
+    except ConfigEditError as e:
+        return UserInfrastPlanSelectOut(
+            code=e.code, status="error", message=e.message, index=-1
         )
     except Exception as e:
         logger.opt(exception=True).warning(
@@ -917,11 +980,20 @@ async def get_webhook(webhook: WebhookGetIn = Body(...)) -> WebhookGetOut:
     response_model=WebhookCreateOut,
     status_code=200,
 )
-async def add_webhook(webhook: WebhookInBase = Body(...)) -> WebhookCreateOut:
+async def add_webhook(webhook: WebhookCreateIn = Body(...)) -> WebhookCreateOut:
 
     try:
-        uid, config = await Config.add_webhook(webhook.scriptId, webhook.userId)
-        data = Webhook(**(await config.toDict()))
+        with _config_edit_scope(_webhook_resource_key(webhook), webhook):
+            uid, config = await Config.add_webhook(webhook.scriptId, webhook.userId)
+            data = Webhook(**(await config.toDict()))
+    except ConfigEditError as e:
+        return WebhookCreateOut(
+            code=e.code,
+            status="error",
+            message=e.message,
+            webhookId="",
+            data=Webhook(**{}),
+        )
     except Exception as e:
         logger.opt(exception=True).warning(f"add_webhook失败: {type(e).__name__}: {e}")
         return WebhookCreateOut(
@@ -944,12 +1016,15 @@ async def add_webhook(webhook: WebhookInBase = Body(...)) -> WebhookCreateOut:
 async def update_webhook(webhook: WebhookUpdateIn = Body(...)) -> OutBase:
 
     try:
-        await Config.update_webhook(
-            webhook.scriptId,
-            webhook.userId,
-            webhook.webhookId,
-            webhook.data.model_dump(exclude_unset=True),
-        )
+        with _config_edit_scope(_webhook_resource_key(webhook), webhook):
+            await Config.update_webhook(
+                webhook.scriptId,
+                webhook.userId,
+                webhook.webhookId,
+                webhook.data.model_dump(exclude_unset=True),
+            )
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"update_webhook失败: {type(e).__name__}: {e}"
@@ -970,7 +1045,10 @@ async def update_webhook(webhook: WebhookUpdateIn = Body(...)) -> OutBase:
 async def delete_webhook(webhook: WebhookDeleteIn = Body(...)) -> OutBase:
 
     try:
-        await Config.del_webhook(webhook.scriptId, webhook.userId, webhook.webhookId)
+        with _config_edit_scope(_webhook_resource_key(webhook), webhook):
+            await Config.del_webhook(webhook.scriptId, webhook.userId, webhook.webhookId)
+    except ConfigEditError as e:
+        return OutBase(code=e.code, status="error", message=e.message)
     except Exception as e:
         logger.opt(exception=True).warning(
             f"delete_webhook失败: {type(e).__name__}: {e}"
