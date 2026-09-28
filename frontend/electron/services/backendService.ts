@@ -34,7 +34,6 @@ import { resolveRuntimeTargetVersion } from './runtimeInitializationService'
 import { getLogger } from './logger'
 import { observeMainOperation, recordMainCount, recordMainDuration } from './sentry'
 const logger = getLogger('后端服务')
-const BACKEND_UNAVAILABLE_CONFIRMATIONS = 3
 
 // Runtime 链路等待 state:running 的兜底上限。正常情况下 Runtime 自己的健康超时会先给出
 // BACKEND_HEALTH_TIMEOUT，这个上限只防止 Runtime 既不就绪也不给终态时把启动流程挂死。
@@ -237,14 +236,8 @@ export class BackendService {
     this.resetStartupLogs()
 
     try {
-      // 先确定本实例端口，再检查旧链路；默认端口被其他实例占用时不能向其发送关闭请求。
-      this.legacyHttpPort = instanceConfig.resolveAvailableHttpPort
-        ? await instanceConfig.resolveAvailableHttpPort(resolveHttpPort())
-        : resolveHttpPort()
-      const shouldStartNewBackend = await this.prepareUntrackedBackendForStart()
-      if (!shouldStartNewBackend) {
-        return { success: true }
-      }
+      // 为本实例选择空闲端口；旧链路只管理自己启动的进程。
+      this.legacyHttpPort = await instanceConfig.resolveAvailableHttpPort(resolveHttpPort())
       if (this.forceStopRequested) {
         throw new Error('强制停止已请求，取消启动后端')
       }
@@ -283,14 +276,14 @@ export class BackendService {
       // 等待后端健康接口可用
       await this.waitUntilReady(timeout)
 
-      logger.info(`后端服务启动成功，pid=${this.backendProcess.pid}, port=${resolveHttpPort()}`)
+      logger.info(`后端服务启动成功，pid=${this.backendProcess.pid}, port=${this.legacyHttpPort}`)
       this.resetStartupLogs()
 
       return { success: true }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       const startupLogs = this.formatStartupLogs()
-      logger.error(`后端服务启动失败，port=${resolveHttpPort()}: ${errorMsg}`)
+      logger.error(`后端服务启动失败，port=${this.legacyHttpPort}: ${errorMsg}`)
 
       // force-stop 已在同一队列中等待时，由它唯一负责 scoped taskkill；
       // start 此处不能先清理一次，否则会对同一组 PID 重复执行强杀。
@@ -437,14 +430,16 @@ export class BackendService {
         onState: event => {
           // 就绪的唯一判据是 backend.run 阶段进入 running 且带 baseUrl；其他阶段即便
           // status 同名也不算，baseUrl 必须取自事件本身而不是自行假定端口。
-           const eventPort = endpointPortLabel(readRuntimeBaseUrl(event.details))
-           logger.info(
-             `Runtime 状态: stage=${event.stage}, status=${event.status}, port=${eventPort}`
-           )
-           if (event.stage !== 'backend.run' || event.status !== 'running') return
+          const eventPort = endpointPortLabel(readRuntimeBaseUrl(event.details))
+          logger.info(
+            `Runtime 状态: stage=${event.stage}, status=${event.status}, port=${eventPort}`
+          )
+          if (event.stage !== 'backend.run' || event.status !== 'running') return
           const baseUrl = readRuntimeBaseUrl(event.details)
           if (!baseUrl) {
-             logger.warn('Runtime 报告 backend.run running 但未携带有效 baseUrl，port=unknown，忽略该事件')
+            logger.warn(
+              'Runtime 报告 backend.run running 但未携带有效 baseUrl，port=unknown，忽略该事件'
+            )
             return
           }
           resolveReady(baseUrl)
@@ -475,17 +470,17 @@ export class BackendService {
 
     if (outcome !== 'timeout' && 'baseUrl' in outcome) {
       this.adoptRuntimeHandle(handle, outcome.baseUrl)
-       logger.info(
-         `后端服务启动成功，runtimePid=${handle.pid}, ` +
-         `port=${endpointPortLabel(outcome.baseUrl)}, baseUrl=${outcome.baseUrl}`
-       )
+      logger.info(
+        `后端服务启动成功，runtimePid=${handle.pid}, ` +
+          `port=${endpointPortLabel(outcome.baseUrl)}, baseUrl=${outcome.baseUrl}`
+      )
       return { success: true }
     }
 
     if (outcome === 'timeout') {
-       logger.error(
-         `等待 Runtime 报告后端就绪超过 ${timeoutMs}ms，port=${endpointPortLabel(this.runtimeBaseUrl)}，请求关闭 Runtime`
-       )
+      logger.error(
+        `等待 Runtime 报告后端就绪超过 ${timeoutMs}ms，port=${endpointPortLabel(this.runtimeBaseUrl)}，请求关闭 Runtime`
+      )
       try {
         const settled = await handle.shutdown({ timeoutMs: RUNTIME_SHUTDOWN_TIMEOUT_MS })
         return this.buildRuntimeStartFailure(settled, stdoutLines, stderrLines)
@@ -560,9 +555,9 @@ export class BackendService {
 
     const onFinished = (): void => {
       if (this.runtimeHandle !== handle) return
-       logger.info(
-         `Runtime 监督进程已结束，port=${endpointPortLabel(this.runtimeBaseUrl)}，清理后端运行状态`
-       )
+      logger.info(
+        `Runtime 监督进程已结束，port=${endpointPortLabel(this.runtimeBaseUrl)}，清理后端运行状态`
+      )
       this.clearRuntimeState(handle)
     }
     void handle.completion.then(onFinished, onFinished)
@@ -589,7 +584,9 @@ export class BackendService {
   ): BackendStartResult {
     if (isRuntimeClientError(reason)) {
       const logs = this.formatRuntimeStartupLogs(stdoutLines, stderrLines, reason.details.stderr)
-      logger.error(`Runtime 调用失败: ${reason.code} ${reason.message}, port=${endpointPortLabel(this.runtimeBaseUrl)}`)
+      logger.error(
+        `Runtime 调用失败: ${reason.code} ${reason.message}, port=${endpointPortLabel(this.runtimeBaseUrl)}`
+      )
       // details 里带着每次尝试的来源与失败种类（git 克隆会先试 cnb 再试 github）。
       // 只打 code + message 的话，日志里看不出是哪个源为什么挂——例如 cnb 秒答但缺
       // 目标分支、github 连接超时，最终只显示后者，真根因被盖住。stderr 已并进 logs，
@@ -619,7 +616,9 @@ export class BackendService {
     if (this.isRuntimeRunResult(reason)) {
       const logs = this.formatRuntimeStartupLogs(stdoutLines, stderrLines, reason.stderr)
       const message = reason.result.message || `后端在就绪前结束（${reason.code}）`
-      logger.error(`后端服务启动失败: ${reason.code} ${message}, port=${endpointPortLabel(this.runtimeBaseUrl)}`)
+      logger.error(
+        `后端服务启动失败: ${reason.code} ${message}, port=${endpointPortLabel(this.runtimeBaseUrl)}`
+      )
       return {
         success: false,
         error: message,
@@ -687,10 +686,14 @@ export class BackendService {
       if (this.hasRuntimeProcessExited(error)) {
         // 关闭超时被客户端 kill、或 Runtime 没给终态就退出：进程本身已经不在了，
         // 后端进程树随 Job Object 一并回收，对调用方而言后端已停止，不必再弹「无法安全退出」。
-        logger.warn(`Runtime 未给出关闭终态就已退出，按已停止处理: ${errorMsg}, port=${endpointPortLabel(this.runtimeBaseUrl)}`)
+        logger.warn(
+          `Runtime 未给出关闭终态就已退出，按已停止处理: ${errorMsg}, port=${endpointPortLabel(this.runtimeBaseUrl)}`
+        )
         return { success: true }
       }
-      logger.error(`Runtime 关闭后端失败: ${errorMsg}, port=${endpointPortLabel(this.runtimeBaseUrl)}`)
+      logger.error(
+        `Runtime 关闭后端失败: ${errorMsg}, port=${endpointPortLabel(this.runtimeBaseUrl)}`
+      )
       return { success: false, error: errorMsg }
     }
   }
@@ -730,6 +733,12 @@ export class BackendService {
     }
   }
 
+  /** 返回当前实例的后端地址；旧启动链路启动后使用为本实例分配的端口。 */
+  getApiEndpoints(): BackendApiEndpoints {
+    const local = this.resolveLocalApiEndpoint()
+    return { local, websocket: deriveWebsocketEndpoint(local) }
+  }
+
   /** 后端 HTTP 根地址：Runtime 就绪后以它下发的为准，否则用镜像源服务的端点。 */
   private resolveLocalApiEndpoint(): string {
     if (this.runtimeBaseUrl) return this.runtimeBaseUrl
@@ -738,54 +747,6 @@ export class BackendService {
   }
 
   // ==================== 旧链路 ====================
-
-  private async prepareUntrackedBackendForStart(): Promise<boolean> {
-    const apiEndpoint = this.resolveLocalApiEndpoint()
-    const metaUrl = `${apiEndpoint}/api/core/ws_meta`
-    const closeUrl = `${apiEndpoint}/api/core/close`
-
-    try {
-      logger.info(`启动前检查旧后端: ${metaUrl}`)
-      const metaResponse = await this.fetchWithTimeout(metaUrl, { method: 'GET' }, 3000)
-      if (!metaResponse.ok) {
-        return true
-      }
-
-      const meta = (await metaResponse.json()) as { devMode?: boolean }
-      if (typeof meta.devMode === 'boolean') {
-        this.lastKnownBackendDevMode = meta.devMode
-      }
-      if (meta.devMode) {
-        logger.info('检测到开发模式旧后端，复用现有后端进程')
-        return false
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-      logger.debug(`启动前未发现旧后端: ${errorMsg}`)
-      return true
-    }
-
-    logger.info(`检测到生产模式旧后端，尝试通过 ${closeUrl} 关闭`)
-    const closeResponse = await this.fetchWithTimeout(
-      closeUrl,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      },
-      5000
-    )
-    if (!closeResponse.ok) {
-      throw new Error(`旧后端关闭请求返回错误: ${closeResponse.status}`)
-    }
-
-    const closed = await this.waitForBackendUnavailable(metaUrl, 5000)
-    if (!closed) {
-      throw new Error('旧后端关闭超时，取消启动新后端以避免端口冲突')
-    }
-    return true
-  }
 
   /**
    * 读取后端权威开发模式；暂时不可达时回退最近一次成功结果。
@@ -828,24 +789,6 @@ export class BackendService {
     }
   }
 
-  private async waitForBackendUnavailable(metaUrl: string, timeoutMs: number): Promise<boolean> {
-    const startedAt = Date.now()
-    let unavailableCount = 0
-
-    while (Date.now() - startedAt < timeoutMs) {
-      try {
-        await this.fetchWithTimeout(metaUrl, { method: 'GET' }, 1000)
-        // 任意 HTTP 响应都证明监听端仍可达，包括启动或关闭过程中的非 2xx。
-        unavailableCount = 0
-      } catch {
-        unavailableCount += 1
-        if (unavailableCount >= BACKEND_UNAVAILABLE_CONFIRMATIONS) return true
-      }
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-    return false
-  }
-
   /**
    * 停止后端服务
    * 通过调用 /api/core/close 接口优雅关闭后端
@@ -877,20 +820,17 @@ export class BackendService {
 
     const pid = this.backendProcess?.pid
     const hasTrackedProcess = this.isTrackedProcessRunning()
-    let metaUrl: string | null = null
-
     if (hasTrackedProcess) {
-      logger.info(`停止后端服务，pid=${pid}, port=${resolveHttpPort()}`)
+      logger.info(`停止后端服务，pid=${pid}, port=${this.legacyHttpPort}`)
     } else {
-      logger.info(`尝试停止后端服务（未追踪到进程，可能是外部启动的），port=${resolveHttpPort()}`)
+      logger.info('未追踪到本实例后端进程，无需发送关闭请求')
+      return { success: true }
     }
 
     // 第一步：尝试通过 API 优雅关闭（无论是否追踪到进程）
-    let apiSuccess = false
     try {
       // 从 MirrorService 获取 API 端点
       const apiEndpoint = this.resolveLocalApiEndpoint()
-      metaUrl = `${apiEndpoint}/api/core/ws_meta`
       const apiUrl = `${apiEndpoint}/api/core/close`
 
       logger.info(`尝试通过 ${apiUrl} 接口关闭后端`)
@@ -908,7 +848,6 @@ export class BackendService {
 
       if (response.ok) {
         logger.info('API 关闭请求发送成功，等待后端退出')
-        apiSuccess = true
       } else {
         logger.warn(`API 关闭请求返回错误: ${response.status}`)
       }
@@ -928,27 +867,6 @@ export class BackendService {
         logger.warn('API 请求超时，后端可能无响应')
       } else if (cause) {
         logger.warn(`底层错误: ${cause.code || cause.message || String(cause)}`)
-      }
-    }
-
-    // 如果没有追踪到进程
-    if (!hasTrackedProcess) {
-      if (apiSuccess && metaUrl) {
-        const closed = await this.waitForBackendUnavailable(metaUrl, 5000)
-        if (closed) {
-          logger.info('已确认未追踪后端退出')
-          return { success: true }
-        }
-        logger.warn('API 已响应，但未追踪后端仍可访问，转入强制清理')
-      } else {
-        logger.info('API 调用失败，转入强制清理相关进程')
-      }
-      try {
-        await killAllRelatedProcesses(this.appRoot)
-        return { success: true }
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error)
-        return { success: false, error: errorMsg }
       }
     }
 
@@ -1010,7 +928,9 @@ export class BackendService {
       if (this.forceStopRequested) {
         return { success: false, error: '强制停止已请求，取消后端重启' }
       }
-      logger.info(`重启后端服务, port=${endpointPortLabel(this.runtimeBaseUrl ?? this.mirrorService.getApiEndpoint('local'))}`)
+      logger.info(
+        `重启后端服务, port=${endpointPortLabel(this.runtimeBaseUrl ?? this.mirrorService.getApiEndpoint('local'))}`
+      )
       const stopResult = await this.stopBackendInternal()
       if (!stopResult.success) return stopResult
       if (this.forceStopRequested) {
@@ -1093,8 +1013,8 @@ export class BackendService {
         if (response.ok) {
           const health = (await response.json()) as { ready?: boolean }
           if (health.ready) {
-              logger.info(`后端健康检查通过, port=${endpointPortLabel(healthUrl)}`)
-              return
+            logger.info(`后端健康检查通过, port=${endpointPortLabel(healthUrl)}`)
+            return
           }
         }
       } catch {

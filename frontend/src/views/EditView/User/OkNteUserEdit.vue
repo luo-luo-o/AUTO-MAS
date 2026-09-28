@@ -360,7 +360,7 @@ import ConfigLockPanel from '@/components/ConfigLockPanel.vue'
 import { useScriptConfigLock } from '@/composables/useScriptConfigLock'
 import { useI18n } from 'vue-i18n'
 import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
   EyeOutlined,
@@ -807,6 +807,11 @@ const ensureOkNteBackup = async (target: 'mas' | 'native') => {
     message.warning(t('edit.configRestoreEnsureFailed'))
   }
 }
+
+onBeforeRouteLeave(async () => {
+  if (configEditor.value && !(await configEditor.value.saveAll())) return false
+  return true
+})
 
 onMounted(async () => {
   await loadScriptInfo()

@@ -38,7 +38,10 @@ vi.mock('./sentry', () => ({
   recordMainDuration: vi.fn(),
 }))
 vi.mock('./environmentService', () => ({ isDevelopmentEnvironment: () => true }))
-vi.mock('./instanceConfig', () => ({ resolveHttpPort: vi.fn(() => 36164) }))
+vi.mock('./instanceConfig', () => ({
+  resolveHttpPort: vi.fn(() => 36164),
+  resolveAvailableHttpPort: vi.fn(async () => 36164),
+}))
 
 const { killAllRelatedProcesses } = await import('../utils/processManager')
 const { resolveHttpPort } = await import('./instanceConfig')

@@ -79,9 +79,7 @@ class ResolveHttpPortTest(unittest.TestCase):
                         "AUTO_MAS_HTTP_PORT": "40000",
                     },
                 ):
-                    self.assertEqual(
-                        main.resolve_http_port(True), main.DEFAULT_HTTP_PORT
-                    )
+                    self.assertEqual(main.resolve_http_port(True), main.DEFAULT_HTTP_PORT)
 
 
 if __name__ == "__main__":

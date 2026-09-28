@@ -2,7 +2,6 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import type { GameSignAccountCreateIn } from '../models/GameSignAccountCreateIn';
 import type { GameSignAccountCreateOut } from '../models/GameSignAccountCreateOut';
 import type { GameSignAccountDeleteIn } from '../models/GameSignAccountDeleteIn';
 import type { GameSignAccountReorderIn } from '../models/GameSignAccountReorderIn';
@@ -29,21 +28,13 @@ export class GameSignService {
     /**
      * 添加游戏社区账号组
      * 添加游戏社区账号组
-     * @param requestBody
      * @returns GameSignAccountCreateOut Successful Response
      * @throws ApiError
      */
-    public static addGameSignAccountApiToolsSignAccountAddPost(
-        requestBody?: (GameSignAccountCreateIn | null),
-    ): CancelablePromise<GameSignAccountCreateOut> {
+    public static addGameSignAccountApiToolsSignAccountAddPost(): CancelablePromise<GameSignAccountCreateOut> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/tools/sign/account/add',
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
         });
     }
     /**

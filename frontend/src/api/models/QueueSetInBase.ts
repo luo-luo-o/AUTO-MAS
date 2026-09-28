@@ -2,13 +2,10 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-/**
- * 游戏社区账号组删除请求
- */
-export type GameSignAccountDeleteIn = {
+export type QueueSetInBase = {
     /**
-     * 账号组 UUID
+     * 所属队列ID
      */
-    accountId: string;
+    queueId: string;
 };
 

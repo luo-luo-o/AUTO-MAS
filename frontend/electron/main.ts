@@ -553,14 +553,7 @@ async function forceQuitAfterRendererTimeout(reason: string): Promise<void> {
 }
 
 function requestRendererClose(reason: string): void {
-  if (
-    !canRequestRendererClose({
-      coordinatedQuit,
-      forceQuitInProgress,
-      quitRequestInFlight,
-      relaunchAfterQuit,
-    })
-  )
+  if (!canRequestRendererClose({ coordinatedQuit, forceQuitInProgress, quitRequestInFlight }))
     return
   const win = mainWindow
   if (!win || win.isDestroyed()) {
@@ -938,12 +931,7 @@ function createWindow() {
   // 窗口事件处理
   win.on('close', (event: Electron.Event) => {
     const currentConfig = loadConfig()
-    const quitState = {
-      coordinatedQuit,
-      forceQuitInProgress,
-      quitRequestInFlight,
-      relaunchAfterQuit,
-    }
+    const quitState = { coordinatedQuit, forceQuitInProgress, quitRequestInFlight }
 
     if (!canElectronExitImmediately(quitState)) {
       event.preventDefault()
@@ -2085,14 +2073,7 @@ app.on('will-quit', () => {
 })
 
 app.on('before-quit', event => {
-  if (
-    canElectronExitImmediately({
-      coordinatedQuit,
-      forceQuitInProgress,
-      quitRequestInFlight,
-      relaunchAfterQuit,
-    })
-  ) {
+  if (canElectronExitImmediately({ coordinatedQuit, forceQuitInProgress, quitRequestInFlight })) {
     return
   }
   event.preventDefault()
@@ -2140,14 +2121,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    if (
-      canElectronExitImmediately({
-        coordinatedQuit,
-        forceQuitInProgress,
-        quitRequestInFlight,
-        relaunchAfterQuit,
-      })
-    ) {
+    if (canElectronExitImmediately({ coordinatedQuit, forceQuitInProgress, quitRequestInFlight })) {
       app.quit()
     } else if (!forceQuitInProgress && !quitRequestInFlight) {
       void forceQuitAfterRendererTimeout('所有 renderer 窗口意外关闭')

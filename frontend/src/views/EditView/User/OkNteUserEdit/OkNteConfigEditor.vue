@@ -317,6 +317,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons-vue'
 import { OknteService } from '@/api/services/OknteService'
@@ -634,7 +635,7 @@ const persistChanges = async (silent: boolean): Promise<boolean> => {
       }
       return true
     } else {
-      message.error(resp?.message || '保存失败')
+      message.error(resp?.message || '保存失败，请刷新后重试')
     }
   } catch (e) {
     logger.error(`保存配置失败: ${e instanceof Error ? e.message : String(e)}`)
@@ -668,12 +669,18 @@ watch(
   { deep: true }
 )
 
+onBeforeRouteLeave(async () => await saveAll())
+onBeforeRouteUpdate(async () => await saveAll())
+
 onMounted(() => {
   loadConfigs()
 })
 
-onBeforeUnmount(() => {
+onBeforeUnmount(async () => {
   clearTimeout(saveTimer)
+  if (hasChanges.value) {
+    await saveAll(true)
+  }
 })
 
 watch(

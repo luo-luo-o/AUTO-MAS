@@ -138,7 +138,7 @@ function readPersistedLaunchMode(appRoot: string): string | undefined {
 /** 构建默认值：源码开发走 development；打包安装仅在捆绑 Runtime 时走 managed。 */
 function resolveBuildDefaultLaunchMode(): RuntimeLaunchMode {
   const packaged = Boolean(app?.isPackaged)
-  if (!packaged) return 'development'
+  if (!packaged) return resolveRuntimeExecutable() !== null ? 'development' : 'off'
   return resolveRuntimeExecutable() !== null ? 'managed' : 'off'
 }
 

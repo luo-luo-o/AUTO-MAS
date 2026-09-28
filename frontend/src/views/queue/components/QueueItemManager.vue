@@ -233,11 +233,9 @@ import { DeleteOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import draggable from 'vuedraggable'
 import dayjs from 'dayjs'
 import { Service } from '@/api'
-import { useConfigEditSession } from '@/composables/useConfigEditSession'
 
 const { t } = useI18n()
 const logger = window.electronAPI.getLogger('队列项管理')
-const { ensureConfigEditSession, markConfigEditSaved } = useConfigEditSession()
 
 // Props
 interface Props {
@@ -329,14 +327,10 @@ const formatNextRun = (nextRunAt: string) =>
 // 决定要不要把本地值当作“已确认”的基线（例如 savedIntervalMinutes）。
 const saveSchedule = async (record: any, data: Record<string, any>): Promise<boolean> => {
   try {
-    const editSession = await ensureConfigEditSession('QueueConfig')
-    if (!editSession) return false
-
     const response = await Service.updateItemApiQueueItemUpdatePost({
       queueId: props.queueId,
       queueItemId: record.id,
       data: { Schedule: data },
-      ...editSession,
     })
 
     if (response.code !== 200) {
@@ -348,7 +342,6 @@ const saveSchedule = async (record: any, data: Record<string, any>): Promise<boo
       emit('refresh')
       return false
     }
-    await markConfigEditSaved('QueueConfig')
     return true
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
@@ -433,8 +426,6 @@ const loadOptions = async () => {
 const updateQueueItemScript = async (record: any) => {
   try {
     loading.value = true
-    const editSession = await ensureConfigEditSession('QueueConfig')
-    if (!editSession) return
 
     const response = await Service.updateItemApiQueueItemUpdatePost({
       queueId: props.queueId,
@@ -444,11 +435,9 @@ const updateQueueItemScript = async (record: any) => {
           ScriptId: record.script,
         },
       },
-      ...editSession,
     })
 
     if (response.code === 200) {
-      await markConfigEditSaved('QueueConfig')
       emit('refresh')
     } else {
       message.error(
@@ -472,15 +461,11 @@ const addQueueItem = async () => {
     loading.value = true
 
     // 直接创建队列项，默认ScriptId为null（未选择）
-    const editSession = await ensureConfigEditSession('QueueConfig')
-    if (!editSession) return
     const createResponse = await Service.addItemApiQueueItemAddPost({
       queueId: props.queueId,
-      ...editSession,
     })
 
     if (createResponse.code === 200 && createResponse.queueItemId) {
-      await markConfigEditSaved('QueueConfig')
       emit('refresh')
     } else {
       message.error(
@@ -501,16 +486,12 @@ const addQueueItem = async () => {
 // 删除队列项
 const deleteQueueItem = async (itemId: string) => {
   try {
-    const editSession = await ensureConfigEditSession('QueueConfig')
-    if (!editSession) return
     const response = await Service.deleteItemApiQueueItemDeletePost({
       queueId: props.queueId,
       queueItemId: itemId,
-      ...editSession,
     })
 
     if (response.code === 200) {
-      await markConfigEditSaved('QueueConfig')
       // 确保删除后刷新数据
       emit('refresh')
     } else {
@@ -541,18 +522,14 @@ const onDragEnd = async (evt: any) => {
 
     // 构造排序后的ID列表
     const sortedIds = queueItems.value.map(item => item.id)
-    const editSession = await ensureConfigEditSession('QueueConfig')
-    if (!editSession) return
 
     // 调用排序API
     const response = await Service.reorderItemApiQueueItemOrderPost({
       queueId: props.queueId,
       indexList: sortedIds,
-      ...editSession,
     })
 
     if (response.code === 200) {
-      await markConfigEditSaved('QueueConfig')
       // 刷新数据以确保与服务器同步
       emit('refresh')
     } else {

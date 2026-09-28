@@ -66,6 +66,7 @@ class BackendHealthOut(BaseModel):
     protocol: int = Field(description="后端自身支持的健康检查协议版本")
     version: str = Field(description="后端版本号")
     commit: str = Field(description="后端所在提交哈希，未受监督或监督器未注入时为空")
+    instanceId: str = Field(description="当前 Runtime app-root 的稳定实例身份")
 
 
 def _resolve_injected_identity(env_name: str) -> str | None:
@@ -103,6 +104,7 @@ async def get_health(request: Request) -> BackendHealthOut:
         version=_resolve_injected_identity("AUTO_MAS_EXPECTED_VERSION")
         or Config.VERSION,
         commit=_resolve_injected_identity("AUTO_MAS_EXPECTED_COMMIT") or "",
+        instanceId=_resolve_injected_identity("AUTO_MAS_INSTANCE_ID") or "legacy",
     )
 
 

@@ -14,7 +14,7 @@ import { getCurrentInstance, onBeforeUnmount, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { translate } from '@/i18n'
 import QRCode from 'qrcode'
-import type { OutBase, QrCheckOut, QrCreateOut } from '@/api'
+import type { CancelablePromise, OutBase, QrCheckOut, QrCreateOut } from '@/api'
 import { useGameSignApi } from './useGameSignApi'
 
 export type QrLoginProvider = 'miyoushe' | 'skland'
@@ -132,16 +132,16 @@ export function useQrLogin({ getAccountId, onSaved, logger, provider }: QrLoginO
    * 取消导致的 reject 一律换成 name='AbortError'，好让调用方静默丢弃。
    */
   const abortableRequest = async <T>(
-    request: Promise<T>,
+    request: CancelablePromise<T>,
     signal?: AbortSignal
   ): Promise<T> => {
     let aborted = signal?.aborted ?? false
     const handleAbort = () => {
       aborted = true
-      if ('cancel' in request && typeof request.cancel === 'function') request.cancel()
+      request.cancel()
     }
     signal?.addEventListener('abort', handleAbort, { once: true })
-    if (aborted && 'cancel' in request && typeof request.cancel === 'function') request.cancel()
+    if (aborted) request.cancel()
 
     try {
       return await request
