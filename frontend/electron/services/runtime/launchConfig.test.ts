@@ -185,7 +185,10 @@ describe('resolveRuntimeLaunchModeDetail：构建默认值的四种组合', () =
     setPackaged(false)
     process.env[RUNTIME_EXE_ENV] = EXISTING_EXE
 
-    expect(resolveRuntimeLaunchModeDetail(appRoot)).toEqual({ mode: 'development', source: 'default' })
+    expect(resolveRuntimeLaunchModeDetail(appRoot)).toEqual({
+      mode: 'development',
+      source: 'default',
+    })
   })
 
   it('未打包 + 未捆绑 Runtime → off', () => {
