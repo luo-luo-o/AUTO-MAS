@@ -200,7 +200,9 @@ def collect_cycle_entries(queue, script_config, now: datetime) -> list[CycleEntr
             script_uid = uuid.UUID(script_id)
         except ValueError:
             continue
-        if script_uid not in script_config:
+        # 任务运行快照以字符串 UUID 为键；实时配置仍以 UUID 为键。
+        script_key = script_id if script_id in script_config else script_uid
+        if script_key not in script_config:
             continue
 
         index += 1
@@ -215,7 +217,7 @@ def collect_cycle_entries(queue, script_config, now: datetime) -> list[CycleEntr
             CycleEntry(
                 queue_item_id=str(queue_item_id),
                 script_id=script_id,
-                script_name=script_config[script_uid].get("Info", "Name"),
+                script_name=script_config[script_key].get("Info", "Name"),
                 index=index,
                 next_run_at=next_run_at,
                 is_due=next_run_at <= now,

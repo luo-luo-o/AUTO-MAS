@@ -198,11 +198,8 @@
                 <a-form-item>
                   <template #label>
                     <span class="form-label">
-                      节点详情推送
-                      <a-tooltip
-                        mouse-enter-delay="0.5"
-                        title="选择该用户关键节点在任务报告中的呈现方式：关闭 = 不采集；逐条 = 每条带上采集时间，一行一条；汇总 = 按成功/失败/跳过各合并为一行"
-                      >
+                      {{ t('edit.collectNodeDetails') }}
+                      <a-tooltip mouse-enter-delay="0.5" :title="t('edit.collectsKeyMomentsFrom')">
                         <QuestionCircleOutlined class="help-icon" />
                       </a-tooltip>
                     </span>
@@ -363,7 +360,7 @@ import ConfigLockPanel from '@/components/ConfigLockPanel.vue'
 import { useScriptConfigLock } from '@/composables/useScriptConfigLock'
 import { useI18n } from 'vue-i18n'
 import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import {
   EyeOutlined,
@@ -810,6 +807,11 @@ const ensureOkNteBackup = async (target: 'mas' | 'native') => {
     message.warning(t('edit.configRestoreEnsureFailed'))
   }
 }
+
+onBeforeRouteLeave(async () => {
+  if (configEditor.value && !(await configEditor.value.saveAll())) return false
+  return true
+})
 
 onMounted(async () => {
   await loadScriptInfo()

@@ -181,11 +181,11 @@ describe('resolveRuntimeLaunchModeDetail：构建默认值的四种组合', () =
     expect(resolveRuntimeLaunchModeDetail(appRoot)).toEqual({ mode: 'off', source: 'default' })
   })
 
-  it('未打包 + 已捆绑 Runtime → off（源码开发默认仍走旧链路）', () => {
+  it('未打包 + 已找到 Runtime → development', () => {
     setPackaged(false)
     process.env[RUNTIME_EXE_ENV] = EXISTING_EXE
 
-    expect(resolveRuntimeLaunchModeDetail(appRoot)).toEqual({ mode: 'off', source: 'default' })
+    expect(resolveRuntimeLaunchModeDetail(appRoot)).toEqual({ mode: 'development', source: 'default' })
   })
 
   it('未打包 + 未捆绑 Runtime → off', () => {
@@ -310,6 +310,7 @@ describe('recoverRuntimeBackup', () => {
 
 describe('resolveRuntimeLaunchConfig', () => {
   it('off 模式不去定位可执行文件', () => {
+    process.env[RUNTIME_MODE_ENV] = 'off'
     process.env[RUNTIME_EXE_ENV] = EXISTING_EXE
 
     expect(resolveRuntimeLaunchConfig(appRoot)).toEqual({

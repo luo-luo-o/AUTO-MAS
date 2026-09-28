@@ -69,6 +69,7 @@ from .config import (
     OkNteConfig,
     OkwwConfig,
     SrcConfig,
+    WhimboxConfig,
     ZzzOdConfig,
 )
 from .queue_cycle import (
@@ -143,6 +144,7 @@ _MANAGER_BOOK: dict[
     ZzzOdConfig: lambda script_item, _ctx: task.ZzzOdManager(script_item),
     BAAHConfig: lambda script_item, _ctx: task.BAAHManager(script_item),
     MaaFWConfig: lambda script_item, _ctx: task.MaaFWEmbeddedManager(script_item),
+    WhimboxConfig: lambda script_item, _ctx: task.WhimboxManager(script_item),
     SrcConfig: _build_src_manager,
 }
 
@@ -260,9 +262,9 @@ def _get_src_root_path(script_config: object) -> Path | None:
 def _snapshot_script_config(script_config: object) -> object:
     """复制脚本配置值，同时排除 ConfigBase 的锁、回调和文件句柄。"""
     memo: dict[int, object] = {}
-    runtime_fields = {"_save_lock", "_save_methods", "file"}
+    runtime_fields = {"_save_lock", "_save_methods", "_preload_task", "file"}
     for key, value in vars(script_config).items():
-        if key in runtime_fields or isinstance(value, asyncio.Lock):
+        if key in runtime_fields or isinstance(value, (asyncio.Lock, asyncio.Task)):
             memo[id(value)] = None
     try:
         clone = copy.deepcopy(script_config, memo)
@@ -273,7 +275,7 @@ def _snapshot_script_config(script_config: object) -> object:
             clone.__dict__ = {
                 key: copy.deepcopy(value, memo)
                 for key, value in vars(script_config).items()
-                if key not in {"_save_lock", "_save_methods", "file"}
+                if key not in runtime_fields
             }
     visited: set[int] = set()
 
@@ -346,19 +348,16 @@ class Task(TaskExecuteBase):
         task_info: TaskInfo,
         script_identities: list[WSTaskScriptIdentityData],
         script_reservations: _ScriptTaskReservations | None = None,
-        script_run_days: list[list[str]] | None = None,
+        queue_item_ids: list[uuid.UUID] | None = None,
         script_config_snapshots: dict[str, object] | None = None,
-        queue_config_snapshot: object | None = None,
     ):
         super().__init__()
         self.task_info = task_info
         self.script_identities = script_identities
-        # 队列项限定的运行周几，与 script_identities 一一对应；非队列任务为 None。
-        # 以任务创建那一刻的星期为准，队列跨过午夜后后面的项不会按第二天算。
-        self.script_run_days = script_run_days
+        # 队列项身份与脚本列表对齐；调度设置始终从实时队列读取。
+        self.queue_item_ids = queue_item_ids
         # 每个任务独立持有创建时的脚本配置副本，排队期间共享配置变更不会影响运行。
         self.script_config_snapshots = script_config_snapshots or {}
-        self.queue_config_snapshot = queue_config_snapshot
         self.run_weekday = datetime.now().strftime("%A")
         self.script_reservations = script_reservations or _ScriptTaskReservations()
         self.is_closing = False
@@ -493,10 +492,10 @@ class Task(TaskExecuteBase):
     async def _run_cycle_round(self, queue_uid: uuid.UUID) -> None:
         """跑一轮：推算 → 落盘首次推算结果 → 等待或执行。"""
 
-        queue = self.queue_config_snapshot or Config.QueueConfig[queue_uid]
         if queue_uid not in Config.QueueConfig:
             raise RuntimeError(f"循环队列 {queue_uid} 已被删除")
         live_queue = Config.QueueConfig[queue_uid]
+        queue = live_queue
         now = datetime.now()
         entries = collect_cycle_entries(
             queue,
@@ -561,7 +560,7 @@ class Task(TaskExecuteBase):
             await asyncio.sleep(CYCLE_RETRY_SLEEP_SECONDS)
 
     def _collect_entries(self, queue_uid: uuid.UUID) -> list[CycleEntry]:
-        queue = self.queue_config_snapshot or Config.QueueConfig[queue_uid]
+        queue = Config.QueueConfig[queue_uid]
         return collect_cycle_entries(
             queue,
             self.script_config_snapshots or Config.ScriptConfig,
@@ -590,8 +589,7 @@ class Task(TaskExecuteBase):
             raise RuntimeError(
                 "循环队列的结构在运行中被改动，已停止循环，请重新启动"
             ) from None
-        snapshot_queue = self.queue_config_snapshot or Config.QueueConfig[queue_uid]
-        queue_item = snapshot_queue.QueueItem[uuid.UUID(entry.queue_item_id)]
+        queue_item = live_queue_item
         script_list = self.task_info.script_list
         if (
             entry.index >= len(script_list)
@@ -607,12 +605,16 @@ class Task(TaskExecuteBase):
             logger.warning(f"循环跳过: {script_uid} 对应脚本已被删除")
             return "failed"
 
-        script_config = self.script_config_snapshots[str(script_uid)] if str(script_uid) in self.script_config_snapshots else Config.ScriptConfig[script_uid]
+        script_config = (
+            self.script_config_snapshots[str(script_uid)]
+            if str(script_uid) in self.script_config_snapshots
+            else Config.ScriptConfig[script_uid]
+        )
         src_root_path = _get_src_root_path(script_config)
         reservation_owner = self.task_info.task_id
 
         # 与顺序执行同一套原子占用，不再自己判 is_locked 轮询。
-        if script_config.is_locked or not self.script_reservations.try_acquire(
+        if Config.ScriptConfig[script_uid].is_locked or not self.script_reservations.try_acquire(
             script_uid, reservation_owner, src_root_path=src_root_path
         ):
             script_item.status = "等待"
@@ -792,9 +794,15 @@ class Task(TaskExecuteBase):
     def _is_script_scheduled_today(self, index: int) -> bool:
         """队列项的运行周几不含创建任务当天时跳过；非队列任务与缺省项一律运行。"""
 
-        if self.script_run_days is None or index >= len(self.script_run_days):
+        if self.queue_item_ids is None or index >= len(self.queue_item_ids):
             return True
-        return self.run_weekday in self.script_run_days[index]
+        try:
+            queue = Config.QueueConfig[uuid.UUID(self.task_info.queue_id)]
+            item = queue.QueueItem[self.queue_item_ids[index]]
+        except (KeyError, TypeError, ValueError):
+            return False
+        self.run_weekday = datetime.now().strftime("%A")
+        return self.run_weekday in item.get("Schedule", "Days")
 
     async def _run_script_list(self, start_index: int) -> None:
         for self.task_info.current_index in range(
@@ -849,7 +857,7 @@ class Task(TaskExecuteBase):
                 continue
 
             try:
-                if script_config.is_locked:
+                if Config.ScriptConfig[current_script_uid].is_locked:
                     script_item.status = "跳过"
                     logger.info(f"跳过任务: {current_script_uid}, 该任务配置已被锁定")
                     await Publisher.send(
@@ -967,12 +975,12 @@ class _TaskManager:
     @staticmethod
     def _queue_script_entries(
         queue_id: uuid.UUID,
-    ) -> list[tuple[uuid.UUID, list[str]]]:
-        """返回队列中实际引用的脚本 ID 及该队列项限定的运行周几。"""
+    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        """返回队列中实际引用的队列项 ID 与脚本 ID。"""
 
         return [
-            (uuid.UUID(script_id), list(queue_item.get("Schedule", "Days")))
-            for queue_item in Config.QueueConfig[queue_id].QueueItem.values()
+            (item_id, uuid.UUID(script_id))
+            for item_id, queue_item in Config.QueueConfig[queue_id].QueueItem.items()
             if (script_id := str(queue_item.get("Info", "ScriptId") or "").strip())
             and script_id != "-"
         ]
@@ -981,7 +989,7 @@ class _TaskManager:
     def _queue_script_ids(cls, queue_id: uuid.UUID) -> list[uuid.UUID]:
         """返回队列中实际引用的脚本 ID。"""
 
-        return [script_id for script_id, _ in cls._queue_script_entries(queue_id)]
+        return [script_id for _, script_id in cls._queue_script_entries(queue_id)]
 
     @staticmethod
     def _script_identity(script_id: uuid.UUID) -> WSTaskScriptIdentityData:
@@ -1166,8 +1174,6 @@ class _TaskManager:
                 raise RuntimeError(
                     f"循环队列 {Config.QueueConfig[uid].get('Info', 'Name')} 已在运行"
                 )
-            # 立刻打上占用标记：检查到这里之间没有 await，并发的两次启动才不会都通过
-            Config.running_cycle_queue_ids.add(uid)
 
         if mode in ("ScriptConfig", "Update"):
             if uid in Config.ScriptConfig:
@@ -1199,16 +1205,16 @@ class _TaskManager:
             raise ValueError(f"任务 {uid} 无法找到对应脚本配置")
 
         # 创建时冻结任务脚本身份，供 task.created 通知与运行时快照复用；
-        # 队列项限定的运行周几随身份一起冻结，顺序执行时据此跳过
-        script_run_days: list[list[str]] | None = None
+        # 队列项身份随任务冻结；调度时间与启用状态从实时队列读取。
+        queue_item_ids: list[uuid.UUID] | None = None
         if queue_id is not None:
             queue_entries = [
                 entry
                 for entry in self._queue_script_entries(queue_id)
-                if entry[0] in Config.ScriptConfig
+                if entry[1] in Config.ScriptConfig
             ]
-            target_script_ids = [script_id for script_id, _ in queue_entries]
-            script_run_days = [days for _, days in queue_entries]
+            target_script_ids = [script_id for _, script_id in queue_entries]
+            queue_item_ids = [item_id for item_id, _ in queue_entries]
         elif script_uid is not None and script_uid in Config.ScriptConfig:
             target_script_ids = [script_uid]
         else:
@@ -1216,17 +1222,20 @@ class _TaskManager:
         script_identities = [
             self._script_identity(script_id) for script_id in target_script_ids
         ]
+        # 从重复启动检查到此处没有 await；在第一个可能失败的快照步骤前占用。
+        if is_cycle:
+            Config.running_cycle_queue_ids.add(uid)
         # 在任务进入队列前复制实际运行所需的脚本配置对象；不复制全局 Config、锁或运行态。
-        script_config_snapshots = {
-            str(script_id): _snapshot_script_config(Config.ScriptConfig[script_id])
-            for script_id in target_script_ids
-            if script_id in Config.ScriptConfig
-        }
-        queue_config_snapshot = (
-            _snapshot_script_config(Config.QueueConfig[queue_id])
-            if queue_id is not None and queue_id in Config.QueueConfig
-            else None
-        )
+        try:
+            script_config_snapshots = {
+                str(script_id): _snapshot_script_config(Config.ScriptConfig[script_id])
+                for script_id in target_script_ids
+                if script_id in Config.ScriptConfig
+            }
+        except BaseException:
+            if is_cycle:
+                Config.running_cycle_queue_ids.discard(uid)
+            raise
 
         reservation_owner = str(task_uid)
         reservation_acquired = False
@@ -1237,6 +1246,8 @@ class _TaskManager:
                 reservation_owner,
                 src_root_path=_get_src_root_path(script_config),
             ):
+                if is_cycle:
+                    Config.running_cycle_queue_ids.discard(uid)
                 raise RuntimeError(f"任务 {script_config.get('Info', 'Name')} 已在运行")
             reservation_acquired = True
 
@@ -1262,9 +1273,8 @@ class _TaskManager:
                 self.task_info[task_uid],
                 script_identities,
                 self._script_reservations,
-                script_run_days=script_run_days,
+                queue_item_ids=queue_item_ids,
                 script_config_snapshots=script_config_snapshots,
-                queue_config_snapshot=queue_config_snapshot,
             )
             await Publisher.send(
                 id=protocol.ID_TASK_MANAGER,

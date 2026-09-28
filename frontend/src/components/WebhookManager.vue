@@ -256,7 +256,11 @@ const toWebhookPayload = (
   Data: { Url: url, Template: template, Method: method, Headers: headers },
 })
 
-const webhookResourceKey = () => (props.mode === 'global' ? 'Config' : 'ScriptConfig')
+const ensureWebhookSaveSucceeded = (response: { code?: number; message?: string | null }) => {
+  if (response.code !== 200) {
+    throw new Error(response.message || '保存失败，请刷新后重试')
+  }
+}
 
 // 定义Webhook类型（兼容旧props用）
 interface CustomWebhook {
@@ -443,7 +447,7 @@ const toggleWebhookEnabled = async (webhook: WebhookItem) => {
 
       if (props.mode === 'global') {
         // 全局模式：使用setting接口
-        await Service.updateWebhookApiSettingWebhookUpdatePost({
+        const response = await Service.updateWebhookApiSettingWebhookUpdatePost({
           scriptId: null,
           userId: null,
           webhookId: webhook.uid,
@@ -457,9 +461,10 @@ const toggleWebhookEnabled = async (webhook: WebhookItem) => {
           ),
           ...editSession,
         })
+        ensureWebhookSaveSucceeded(response)
       } else {
         // 用户模式：使用scripts接口
-        await Service.updateWebhookApiScriptsWebhookUpdatePost({
+        const response = await Service.updateWebhookApiScriptsWebhookUpdatePost({
           scriptId: props.scriptId || null,
           userId: props.userId || null,
           webhookId: webhook.uid,
@@ -473,6 +478,7 @@ const toggleWebhookEnabled = async (webhook: WebhookItem) => {
           ),
           ...editSession,
         })
+        ensureWebhookSaveSucceeded(response)
       }
 
       await markConfigEditSaved(webhookResourceKey())
@@ -518,20 +524,22 @@ const deleteWebhook = (webhook: WebhookItem) => {
           if (!editSession) return
           if (props.mode === 'global') {
             // 全局模式：使用setting接口
-            await Service.deleteWebhookApiSettingWebhookDeletePost({
+            const response = await Service.deleteWebhookApiSettingWebhookDeletePost({
               scriptId: null,
               userId: null,
               webhookId: webhook.uid,
               ...editSession,
             })
+            ensureWebhookSaveSucceeded(response)
           } else {
             // 用户模式：使用scripts接口
-            await Service.deleteWebhookApiScriptsWebhookDeletePost({
+            const response = await Service.deleteWebhookApiScriptsWebhookDeletePost({
               scriptId: props.scriptId || null,
               userId: props.userId || null,
               webhookId: webhook.uid,
               ...editSession,
             })
+            ensureWebhookSaveSucceeded(response)
           }
 
           await markConfigEditSaved(webhookResourceKey())
@@ -678,7 +686,7 @@ const handleSubmit = async () => {
 
         if (props.mode === 'global') {
           // 全局模式：使用setting接口
-          await Service.updateWebhookApiSettingWebhookUpdatePost({
+          const response = await Service.updateWebhookApiSettingWebhookUpdatePost({
             scriptId: null,
             userId: null,
             webhookId: formData.uid,
@@ -692,9 +700,10 @@ const handleSubmit = async () => {
             ),
             ...editSession,
           })
+          ensureWebhookSaveSucceeded(response)
         } else {
           // 用户模式：使用scripts接口
-          await Service.updateWebhookApiScriptsWebhookUpdatePost({
+          const response = await Service.updateWebhookApiScriptsWebhookUpdatePost({
             scriptId: props.scriptId || null,
             userId: props.userId || null,
             webhookId: formData.uid,
@@ -708,6 +717,7 @@ const handleSubmit = async () => {
             ),
             ...editSession,
           })
+          ensureWebhookSaveSucceeded(response)
         }
 
         await markConfigEditSaved(webhookResourceKey())

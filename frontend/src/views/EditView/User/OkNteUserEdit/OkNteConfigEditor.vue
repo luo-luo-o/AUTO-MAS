@@ -634,7 +634,7 @@ const persistChanges = async (silent: boolean): Promise<boolean> => {
       }
       return true
     } else {
-      message.error(resp?.message || '保存失败')
+      message.error(resp?.message || '保存失败，请刷新后重试')
     }
   } catch (e) {
     logger.error(`保存配置失败: ${e instanceof Error ? e.message : String(e)}`)

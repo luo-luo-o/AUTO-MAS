@@ -113,16 +113,17 @@ function resolveApiEndpoints(): ApiEndpoints {
   const initService = getInitService()
   // 完整初始化流程用 InitializationService 内部的实例启动后端，backend-start 用模块级实例，
   // 两条路径都可能持有 Runtime 句柄，取先就绪的那个。
+  const initBackend = initService.getBackendService()
+  const mainBackend = getBackendService()
   const runtimeEndpoints =
-    getBackendService().getRuntimeApiEndpoints() ??
-    initService.getBackendService().getRuntimeApiEndpoints()
+    initBackend.getRuntimeApiEndpoints() ?? mainBackend.getRuntimeApiEndpoints()
   if (runtimeEndpoints) return runtimeEndpoints
 
   if (resolveRuntimeLaunchMode(getAppRoot()) !== 'off') {
     throw new Error('Runtime 后端尚未就绪')
   }
 
-  return initService.getMirrorService().getApiEndpoints()
+  return initBackend.getApiEndpoints()
 }
 
 export function getLocalApiEndpoint(): string {

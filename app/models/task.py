@@ -274,14 +274,15 @@ class TaskItem(ABC):
 
         if not self.script_list:
             return "任务未加载"
-        return "\n\n\n".join(
-            [
+        results = []
+        for script in self.script_list:
+            indented_result = script.result.replace("\n", "\n    ")
+            results.append(
                 f"{script.name}：\n\n"
                 f"    已完成用户数：{sum(1 for user in script.user_list if user.status == '完成')}；未完成用户数：{sum(1 for user in script.user_list if user.status != '完成')}\n\n"
-                f"    {script.result.replace('\n', '\n    ')}"
-                for script in self.script_list
-            ]
-        )
+                f"    {indented_result}"
+            )
+        return "\n\n\n".join(results)
 
 
 @dataclass

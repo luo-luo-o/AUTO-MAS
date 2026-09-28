@@ -35,7 +35,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from time import sleep
-from typing import Any, Protocol
+from typing import Any
 
 try:
     import msvcrt  # type: ignore[import-not-found]
@@ -820,18 +820,12 @@ def write_file(
     # 一个 profile 下所有配置文件共用同一把锁，覆盖序列化到原子替换的完整事务。
     try:
         with ProfileFileLock(path.parent / ".automas-profile.lock"):
-            guard = _CURRENT_WRITE_GUARD.get()
-            guarded = guard is not None and path in guard.paths
-            if guarded:
-                guard.before_write(path)
             if codec is not None:
                 atomic_write(path, codec[0](payload, encoding))
-            else:
-                if not isinstance(payload, str):
-                    raise ValueError(f"不支持的配置文件格式 `{_suffix}`，且内容非字符串")
-                atomic_write(path, payload.encode(encoding))
-            if guarded:
-                guard.after_write(path)
+                return
+            if not isinstance(payload, str):
+                raise ValueError(f"不支持的配置文件格式 `{_suffix}`，且内容非字符串")
+            atomic_write(path, payload.encode(encoding))
     except TimeoutError:
         raise
     except BaseException:

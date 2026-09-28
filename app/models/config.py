@@ -1044,11 +1044,14 @@ class MaaUserConfig(ConfigBase):
         )
         ## 是否库存保持
         self.Task_IfDepotMaintain = ConfigItem(
-            "Task", "IfDepotMaintain", False, BoolValidator()
+            "Task", "IfDepotMaintain", True, BoolValidator()
         )
         ## 库存保持计划（快速配置面板维护；MAA 侧同名 PlanList 为透传载体）
         self.Task_DepotMaintainPlans = ConfigItem(
-            "Task", "DepotMaintainPlans", "[]", JSONValidator(list)
+            "Task",
+            "DepotMaintainPlans",
+            '[{"Stage":"PR-A-1","DropId":"3261","DropCount":20},{"Stage":"PR-A-1","DropId":"3231","DropCount":20},{"Stage":"PR-B-1","DropId":"3251","DropCount":20},{"Stage":"PR-B-1","DropId":"3241","DropCount":20},{"Stage":"PR-C-1","DropId":"3211","DropCount":20},{"Stage":"PR-C-1","DropId":"3271","DropCount":20},{"Stage":"PR-D-1","DropId":"3221","DropCount":20},{"Stage":"PR-D-1","DropId":"3281","DropCount":20},{"Stage":"PR-A-2","DropId":"3262","DropCount":20},{"Stage":"PR-A-2","DropId":"3232","DropCount":20},{"Stage":"PR-B-2","DropId":"3252","DropCount":20},{"Stage":"PR-B-2","DropId":"3242","DropCount":20},{"Stage":"PR-C-2","DropId":"3212","DropCount":20},{"Stage":"PR-C-2","DropId":"3272","DropCount":20},{"Stage":"PR-D-2","DropId":"3222","DropCount":20},{"Stage":"PR-D-2","DropId":"3282","DropCount":20},{"Stage":"CE-6","DropId":"4001","DropCount":2000000},{"Stage":"AP-5","DropId":"4006","DropCount":5000},{"Stage":"CA-5","DropId":"3303","DropCount":200}]',
+            JSONValidator(list),
         )
         ## 是否每月自动购买一次绿票商店
         self.Task_IfGreenTicketStore = ConfigItem(
@@ -1056,7 +1059,7 @@ class MaaUserConfig(ConfigBase):
         )
         ## 活动期间是否优先刷活动关
         self.Task_IfActivityFirst = ConfigItem(
-            "Task", "IfActivityFirst", False, BoolValidator()
+            "Task", "IfActivityFirst", True, BoolValidator()
         )
         ## 优先刷取的活动关卡序号
         self.Task_ActivityStageIndex = ConfigItem(
@@ -3809,8 +3812,13 @@ class BetterGIUserConfig(ConfigBase):
             "官服",
             OptionsValidator(["官服", "B服", "亚服", "欧服", "美服", "港澳台服"]),
         )
-        ## 账号 UID（可不填，切换前识别一致将不执行切换动作）
+        ## 账号 UID（可不填，切换前识别一致将不执行切换动作；仅 BetterGI 脚本方式生效）
         self.Switch_Uid = ConfigItem("Switch", "Uid", "")
+        ## 游戏客户端路径（用户级覆盖，可空）：官服/B服/国际服是三个互相隔离的客户端，
+        ## B站账号只能登录B服客户端。留空 = 跟随 BetterGI 全局配置的游戏路径；填写后该
+        ## 用户运行时由 MAS 按此路径临时拉起游戏（不修改 BetterGI 配置），实现同脚本
+        ## 混服用户各用各的客户端
+        self.Switch_GamePath = ConfigItem("Switch", "GamePath", "", FileValidator())
 
         ## Data ------------------------------------------------------------
         self.Data_LastProxyDate = ConfigItem(
@@ -4194,6 +4202,29 @@ class OkNteConfig(ConfigBase):
         super().__init__()
 
 
+def _migrate_bgi_account_switch_default(data: dict) -> tuple[dict, bool]:
+    """为存量 BetterGI 脚本固化旧默认切号方式 BGI。
+
+    ``Run.AccountSwitchMethod`` 是 v5.6.0 新增字段且类默认值定为 MAS；
+    5.5.0 升级上来的存量脚本配置里没有该键，若不补值会随新默认落到 MAS，
+    使国际服/第三方登录等不被 MAS 切号支持的用户从「能跑」变「报错」。
+    故 load 前缺键注入 ``BGI``（升级前的唯一切号路径）：Run 段缺失（手工
+    编辑/截断文件）同样按存量处理；Run 段损坏（非 dict）时跳过注入交给
+    load 的纠错路径重建，不在此崩掉启动。显式保存过该键的配置原样保留。
+
+    Returns:
+        (迁移后的配置字典, 是否发生了注入)
+    """
+    normalized_data = deepcopy(data) if isinstance(data, dict) else {}
+    if "Run" not in normalized_data:
+        normalized_data["Run"] = {}
+    run = normalized_data["Run"]
+    if isinstance(run, dict) and "AccountSwitchMethod" not in run:
+        run["AccountSwitchMethod"] = "BGI"
+        return normalized_data, True
+    return normalized_data, False
+
+
 class BetterGIConfig(ConfigBase):
     """BetterGI 配置（更好的原神，原生 GUI 直控 + 仅一条龙任务）"""
 
@@ -4217,6 +4248,14 @@ class BetterGIConfig(ConfigBase):
         ## 运行、又不希望每次启动 BGI 都弹 UAC（无人值守任务尤其容易挂在授权上），可关闭。
         ## MAS 自身已提权时，即使此处开启，也不会重复触发 UAC（子进程自动继承管理员令牌）。
         self.Run_UseAdmin = ConfigItem("Run", "UseAdmin", True, BoolValidator())
+        ## 账号切换方式（脚本级，参考 MaaEnd Run.AccountSwitchMethod）：
+        ## BGI = BetterGI「切换账号多模式」脚本执行（国际服请改用此方式）；MAS = MAS 侧
+        ## 前台 OCR 直接操控游戏切号（官服/B服，游戏由 MAS 托管启动），官服/B服推荐。
+        ## 默认值双轨：新建脚本取类默认 MAS；存量脚本（配置无该键）由 load 迁移固化
+        ## 旧默认 BGI（见 _migrate_bgi_account_switch_default），保持升级前行为。
+        self.Run_AccountSwitchMethod = ConfigItem(
+            "Run", "AccountSwitchMethod", "MAS", OptionsValidator(["BGI", "MAS"])
+        )
 
         ## Game ------------------------------------------------------------
         ## 控制器（游戏控制方式：电脑端-前台 / 电脑端-云原神 / 电脑端-桌面分身）
@@ -4236,6 +4275,20 @@ class BetterGIConfig(ConfigBase):
         self.UserData = MultipleConfig([BetterGIUserConfig])
 
         super().__init__()
+
+    async def load(self, data: dict) -> bool:
+        """加载脚本配置前为存量脚本固化旧默认切号方式 BGI。
+
+        注入后子级数据与完整存量文件（仅缺新键）比对不再 dirty，落盘靠两级：
+        挂在 MultipleConfig 下时由父级整表比对发现缺键提交写盘；独立连接
+        文件时由这里的显式提交完成（对齐 MaaEndConfig.load 的迁移范式）。
+        返回值含迁移标记，不谎报「无写入」。
+        """
+        migrated_data, migrated = _migrate_bgi_account_switch_default(data)
+        is_dirty = await super().load(migrated_data)
+        if migrated and not is_dirty:
+            await self._commit_changes()
+        return is_dirty or migrated
 
 
 class ZzzOdUserConfig(ConfigBase):
@@ -4872,10 +4925,6 @@ class GlobalConfig(ConfigBase):
         )
         ## Koishi Token
         self.Notify_KoishiToken = ConfigItem("Notify", "KoishiToken", "")
-        ## 是否启用微信 Claw 通知（凭据由扫码登录流程管理）
-        self.Notify_IfOpenClawWeixin = ConfigItem(
-            "Notify", "IfOpenClawWeixin", False, BoolValidator()
-        )
         ## 是否启用 QQ 官方机器人通知（凭据由扫码登录流程管理）
         self.Notify_IfOpenClawQQ = ConfigItem(
             "Notify", "IfOpenClawQQ", False, BoolValidator()
@@ -4889,23 +4938,6 @@ class GlobalConfig(ConfigBase):
         ## QQ 官方机器人目标用户 OpenID（由扫码登录响应返回）
         self.Notify_OpenClawQQTargetOpenId = ConfigItem(
             "Notify", "OpenClawQQTargetOpenId", ""
-        )
-        self.Notify_OpenClawWeixinServerAddress = ConfigItem(
-            "Notify",
-            "OpenClawWeixinServerAddress",
-            "https://ilinkai.weixin.qq.com",
-            URLValidator(schemes=["https"]),
-        )
-        self.Notify_OpenClawWeixinBotToken = ConfigItem(
-            "Notify", "OpenClawWeixinBotToken", "", EncryptValidator()
-        )
-        ## 微信 Claw 账号 ID（由二维码登录响应返回）
-        self.Notify_OpenClawWeixinAccountId = ConfigItem(
-            "Notify", "OpenClawWeixinAccountId", ""
-        )
-        ## 微信 Claw 用户 ID（由二维码登录响应返回）
-        self.Notify_OpenClawWeixinTargetUserId = ConfigItem(
-            "Notify", "OpenClawWeixinTargetUserId", ""
         )
         ## SMTP 服务器地址
         self.Notify_SMTPServerAddress = ConfigItem("Notify", "SMTPServerAddress", "")
@@ -5271,6 +5303,157 @@ class BAAHConfig(ConfigBase):
         super().__init__()
 
 
+class WhimboxUserConfig(ConfigBase):
+    """奇想盒用户配置（无限暖暖，一条龙配置档）
+
+    一条龙字段定义与值域完全来自上游安装目录三件套（任务目录，运行时读取），
+    本类只存「用户勾了哪些步骤、选了哪些值」的覆盖集（Tasks/Options 两个
+    JSON map），不复制上游字段模型；写入时按当前模板键集过滤后物化到上游
+    configs/config.json。
+    """
+
+    def __init__(self) -> None:
+
+        ## Info ------------------------------------------------------------
+        self.Info_Name = ConfigItem("Info", "Name", "新用户", UserNameValidator())
+        self.Info_Status = ConfigItem("Info", "Status", True, BoolValidator())
+        ## base 来源三态（共享/独立/原生，存储值沿用「脚本/用户/直控」）：共享/独立=
+        ## 用 MAS 面板配置（当前运行行为一致，为后续特殊功能预留），原生=直接用奇想盒
+        ## 自带配置（MAS 零写入）
+        self.Info_Mode = ConfigItem(
+            "Info", "Mode", "脚本", UserDirectConfigModeValidator()
+        )
+        ## 是否启用覆写层（快速配置，与来源独立，按账号保存，默认关）：开启时原生态
+        ## 也会在任务前把面板覆盖集写入奇想盒（overlay，任务结束还原）；共享/独立态
+        ## 面板本就是 base 来源，开关暂无额外消费点，为后续特殊功能预留。默认关保证
+        ## 「原生=零写入」与 _write_config_or_hint 报错里「切原生绕开写入」的出路成立
+        self.Info_IfQuickConfig = ConfigItem(
+            "Info", "IfQuickConfig", False, BoolValidator()
+        )
+        self.Info_RemainedDay = ConfigItem(
+            "Info", "RemainedDay", -1, RangeValidator(-1, 9999)
+        )
+        self.Info_IfScriptBeforeTask = ConfigItem(
+            "Info", "IfScriptBeforeTask", False, BoolValidator()
+        )
+        self.Info_ScriptBeforeTask = ConfigItem(
+            "Info", "ScriptBeforeTask", "", FileValidator()
+        )
+        self.Info_IfScriptAfterTask = ConfigItem(
+            "Info", "IfScriptAfterTask", False, BoolValidator()
+        )
+        self.Info_ScriptAfterTask = ConfigItem(
+            "Info", "ScriptAfterTask", "", FileValidator()
+        )
+        self.Info_Notes = ConfigItem("Info", "Notes", "无")
+        self.Info_Tag = ConfigItem(
+            "Info", "Tag", "[ ]", VirtualConfigValidator(self.getTags)
+        )
+
+        ## OneDragon -------------------------------------------------------
+        ## 一条龙是否循环全部游戏账号（物化为上游 OneDragon.change_account；
+        ## 账号列表由奇想盒运行期 OCR 动态发现，MAS 不做账号定向）
+        self.OneDragon_IfRunAllAccounts = ConfigItem(
+            "OneDragon", "IfRunAllAccounts", False, BoolValidator()
+        )
+        ## 一条龙结束后关闭游戏与奇想盒不设开关：恒物化上游
+        ## OneDragon.auto_close_game=true（后续脚本流程依赖游戏已退出，
+        ## 由适配层强制，用户不可关闭）
+
+        ## Task ------------------------------------------------------------
+        ## 步骤开关覆盖集：JSON map {步骤键: bool}，键集来自任务目录
+        ## （上游 OneDragonDefaultSteps 节），只存用户勾选结果
+        self.Task_Tasks = ConfigItem("Task", "Tasks", "{ }", JSONValidator(dict))
+        ## 目标/参数覆盖集：JSON map {键: 值}，键集来自任务目录
+        ## （上游 OneDragon 节托管字段），只存用户显式选择的值
+        self.Task_Options = ConfigItem("Task", "Options", "{ }", JSONValidator(dict))
+
+        ## Data ------------------------------------------------------------
+        self.Data_LastProxyDate = ConfigItem(
+            "Data", "LastProxyDate", "2000-01-01", DateTimeValidator("%Y-%m-%d")
+        )
+        self.Data_ProxyTimes = ConfigItem(
+            "Data", "ProxyTimes", 0, RangeValidator(0, 9999)
+        )
+        self.Data_LastProxyStatus = ConfigItem(
+            "Data",
+            "LastProxyStatus",
+            "未知",
+            OptionsValidator(["未知", "成功", "失败"]),
+        )
+
+        ## Notify ----------------------------------------------------------
+        ## 是否启用用户通知
+        self.Notify_Enabled = ConfigItem("Notify", "Enabled", False, BoolValidator())
+        ## 是否发送用户统计信息
+        self.Notify_IfSendStatistic = ConfigItem(
+            "Notify", "IfSendStatistic", False, BoolValidator()
+        )
+        ## 是否发送邮件
+        self.Notify_IfSendMail = ConfigItem(
+            "Notify", "IfSendMail", False, BoolValidator()
+        )
+        ## 用户收件地址
+        self.Notify_ToAddress = ConfigItem("Notify", "ToAddress", "")
+        ## 是否启用 Server 酱
+        self.Notify_IfServerChan = ConfigItem(
+            "Notify", "IfServerChan", False, BoolValidator()
+        )
+        ## Server 酱密钥
+        self.Notify_ServerChanKey = ConfigItem("Notify", "ServerChanKey", "")
+        ## 自定义 Webhook 列表
+        self.Notify_CustomWebhooks = MultipleConfig([Webhook])
+
+        super().__init__()
+
+    def getTags(self) -> str:
+        """生成奇想盒用户标签列表"""
+        tags = []
+
+        # 任务代理标签（使用东4区时间）
+        tags.append(_tag_proxy(self, "任务"))
+
+        # 剩余天数标签
+        tags.append(_tag_remained_days(self))
+
+        # 备注标签
+        tags.append(_tag_notes(self))
+
+        return json.dumps(tags, ensure_ascii=False)
+
+
+class WhimboxConfig(ConfigBase):
+    """奇想盒配置（无限暖暖，BetterGI 线：无头 CLI + 日志面判定）"""
+
+    def __init__(self) -> None:
+
+        ## Info ------------------------------------------------------------
+        self.Info_Name = ConfigItem("Info", "Name", "新奇想盒脚本")
+        ## 奇想盒安装根目录（whimbox_app.exe 所在目录；configs/logs 与其同级）
+        self.Info_RootPath = ConfigItem("Info", "RootPath", "", FileValidator())
+
+        ## Run -------------------------------------------------------------
+        self.Run_ProxyTimesLimit = ConfigItem(
+            "Run", "ProxyTimesLimit", 0, RangeValidator(0, 9999)
+        )
+        ## 失败重试次数：只用于「没有上游结论」的异常（进程提前退出/卡死）；
+        #  上游自己判负时，仅当失败原因与上一轮不同才继续重试（同一结论连着出现即收口）
+        self.Run_RunTimesLimit = ConfigItem(
+            "Run", "RunTimesLimit", 3, RangeValidator(1, 9999)
+        )
+        ## 运行超时（分钟）：日志静默超过该时长判定卡死
+        self.Run_RunTimeLimit = ConfigItem(
+            "Run", "RunTimeLimit", 30, RangeValidator(1, 9999)
+        )
+        ## 以管理员权限启动奇想盒后端（上游强制管理员，缺权限会在起跑即退出；
+        ## MAS 自身已提权时不重复触发 UAC，子进程自动继承管理员令牌）
+        self.Run_UseAdmin = ConfigItem("Run", "UseAdmin", True, BoolValidator())
+
+        self.UserData = MultipleConfig([WhimboxUserConfig])
+
+        super().__init__()
+
+
 CLASS_BOOK = {
     "MAA": MaaConfig,
     "MaaEnd": MaaEndConfig,
@@ -5284,6 +5467,7 @@ CLASS_BOOK = {
     "BetterGI": BetterGIConfig,
     "ZzzOd": ZzzOdConfig,
     "BAAH": BAAHConfig,
+    "Whimbox": WhimboxConfig,
     "MSS": MSSConfig,
 }
 """配置类映射表: 脚本类型键 → 配置类, GlobalConfig 的脚本配置列表由此派生"""
